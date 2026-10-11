@@ -161,11 +161,11 @@ namespace InFalsusChartLoader
         /// the same code and should not be reported as a jacket. The word is <b>part of the cache
         /// key</b>: a folder that points `background` at its own `jacket` asks twice for one file,
         /// and the second ask must not be answered with the first's material — the jacket is drawn
-        /// on a card and the background on the game's backdrop quad, and only the backdrop one wants
-        /// the render queue below (`BackgroundQueue`). One more texture per such folder is what that
-        /// costs, and it was paid on the first run of this: the queue was set only for materials
-        /// built *as* backgrounds, the picture case shared the jacket's, and the queue it needed was
-        /// never set on anything.
+        /// on a card and the background on the game's backdrop quad, and only the background's
+        /// material gets cloned from the game's own at the claim (`BackgroundClone`). One more
+        /// texture per such folder is what that costs, and it was paid on the first run of this:
+        /// the background was answered with the jacket's material, and the clone it needed was
+        /// never made.
         /// </summary>
         internal static IntPtr Build(string pngPath, string what, out string reason)
         {
@@ -409,57 +409,6 @@ namespace InFalsusChartLoader
         /// it is reported, and the jacket is built anyway, because the alternative is no jacket at
         /// all over a property nothing looks at.
         /// </summary>
-        /// <summary>
-        /// The render queue a background material is put in: one below the transparent layer every
-        /// UI and sprite shader uses.
-        ///
-        /// A background is the one material this mod puts on a quad the game also draws on — the
-        /// game's own backdrop (`Scene/Backgrounds/BackgroundObject`) — and the game draws its mask
-        /// layer (`Scene/Backgrounds/BackgroundDiamondContainer/BackgroundDiamondOutput`: the
-        /// hexagon-and-triangle art seen behind the track) at the same depth in the same queue, and
-        /// *before* that quad. Measured, not reasoned: with a background of this mod's in place —
-        /// video or plain picture, the material's own texture does not matter — that art disappears,
-        /// which an art drawn *after* the quad could not do. One queue under the 3000 layer puts this
-        /// material in front of the art, so the art stays on top of the picture, which is where it is
-        /// in a run the game gives no background to hide it.
-        /// </summary>
-        private const int BackgroundQueue = 2999;
-
-        /// <summary>The word <see cref="Build(string, string, out string)"/> uses for a background.</summary>
-        private const string BackgroundWhat = "background";
-
-        /// <summary>
-        /// Puts a material's render queue where the caller asked, asked by name like every other
-        /// property here. `Material.renderQueue` takes and answers an int, so the argument handed to
-        /// the invoker is the address of the value — the convention this file's `Invoke` was
-        /// measured against.
-        ///
-        /// A failure here is reported and the material is still returned: without it the background
-        /// is still a background, it just covers the game's own art the way every build before this
-        /// one did. That is the half worth saying out loud rather than failing the whole chart over.
-        /// </summary>
-        private static unsafe bool SetQueue(IntPtr material, int queue, out string reason)
-        {
-            reason = null;
-
-            IntPtr setter = Entry(_materialClass, "set_renderQueue", 1);
-            if (setter == IntPtr.Zero)
-            {
-#if DEBUG
-                reason = "Material.set_renderQueue could not be found";
-#endif
-                return false;
-            }
-
-            int storage = queue;
-            IntPtr* args = stackalloc IntPtr[1];
-            args[0] = (IntPtr)(&storage);
-            if (!Invoke(setter, material, args, 1, out reason)) return false;
-
-            Diagnostics.Info($"material render queue set to {queue}");
-            return true;
-        }
-
         private static IntPtr BuildMaterial(IntPtr texture, string what, out string reason)
         {
             reason = null;
@@ -542,22 +491,97 @@ namespace InFalsusChartLoader
             textureArgs[0] = texture;
             if (!Invoke(setTexture, material, textureArgs, 1, out reason)) return IntPtr.Zero;
 
-            if (what == BackgroundWhat && !SetQueue(material, BackgroundQueue, out reason))
+            return material;
+        }
+
+        /// <summary>
+        /// A clone of a material the game loaded, carrying every property it was authored with —
+        /// shader, queue, z-test, blend, keywords and the mask slots alike — which a material built
+        /// from a shader alone has none of. See `BackgroundClone`.
+        ///
+        /// Every reason here is written whether or not this is a Debug build: a failure walks out to
+        /// one Release-visible Error in `Hooks.CloneBackground`, so the string has to exist in
+        /// Release to be readable there.
+        /// </summary>
+        internal static unsafe IntPtr CloneFrom(IntPtr source, out string reason)
+        {
+            reason = null;
+
+            if (!Memory.LooksLikeObject(source))
             {
-                Diagnostics.Warn($"the background's render queue could not be set: {reason}");
-                if (!QueueWarned)
-                {
-                    QueueWarned = true;
-                    Diagnostics.WarnRelease("the background's render queue could not be set in this build; " +
-                                            "the game's own art behind the track will be covered");
-                }
+                reason = "there is no material to clone";
+                return IntPtr.Zero;
+            }
+
+            IntPtr material = Il2CppInterop.Runtime.IL2CPP.il2cpp_object_new(_materialClass);
+            if (material == IntPtr.Zero)
+            {
+                reason = "the clone material could not be created";
+                return IntPtr.Zero;
+            }
+
+            IntPtr constructor = ConstructorBySignature("Material", MaterialCopyWanted);
+            if (constructor == IntPtr.Zero)
+            {
+                reason = "Material's copy constructor could not be found";
+                return IntPtr.Zero;
+            }
+
+            IntPtr* args = stackalloc IntPtr[1];
+            args[0] = source;
+            if (!Invoke(constructor, material, args, 1, out reason)) return IntPtr.Zero;
+
+            if (IsKnownToHaveNoNativeObject(material))
+            {
+                reason = "the clone returned but has no native object";
+                return IntPtr.Zero;
             }
 
             return material;
         }
 
-        /// <summary>Said once: the queue failure is per material, the consequence is per run.</summary>
-        private static bool QueueWarned;
+        /// <summary>The constructor a clone wants: `Material(Material source)`.</summary>
+        private static readonly string[] MaterialCopyWanted = { "Material" };
+
+        /// <summary>A material's picture, asked of the material itself rather than remembered.</summary>
+        internal static IntPtr MainTexture(IntPtr material, out string reason)
+        {
+            reason = null;
+
+            IntPtr getter = Entry(_materialClass, "get_mainTexture", 0);
+            if (getter == IntPtr.Zero)
+            {
+                reason = "Material.get_mainTexture could not be found";
+                return IntPtr.Zero;
+            }
+
+            IntPtr raised = IntPtr.Zero;
+            IntPtr texture = Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(getter, material, null, ref raised);
+            if (raised != IntPtr.Zero || !Memory.LooksLikeObject(texture))
+            {
+                reason = "the material's main texture could not be read";
+                return IntPtr.Zero;
+            }
+
+            return texture;
+        }
+
+        /// <summary>Puts a picture on a material, by the same call the build makes.</summary>
+        internal static unsafe bool SetMainTexture(IntPtr material, IntPtr texture, out string reason)
+        {
+            reason = null;
+
+            IntPtr setter = Entry(_materialClass, "set_mainTexture", 1);
+            if (setter == IntPtr.Zero)
+            {
+                reason = "Material.set_mainTexture could not be found";
+                return false;
+            }
+
+            IntPtr* args = stackalloc IntPtr[1];
+            args[0] = texture;
+            return Invoke(setter, material, args, 1, out reason);
+        }
 
         // ---------------------------------------------------------------- runtime plumbing
 

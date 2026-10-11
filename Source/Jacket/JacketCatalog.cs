@@ -56,6 +56,9 @@ namespace InFalsusChartLoader
         private static IntPtr _armed;
         private static IntPtr _armedMaterial;
 
+        /// <summary>Whether the armed load is the in-play background — see <see cref="Arm"/>.</summary>
+        private static bool _armedBackground;
+
         internal static int Count => ByBase.Count;
 
         /// <summary>Handshakes seen. Counted rather than logged — see Find.</summary>
@@ -305,16 +308,24 @@ namespace InFalsusChartLoader
             return false;
         }
 
-        internal static void Arm(IntPtr reference, IntPtr material)
+        /// <summary>
+        /// Arms the handshake for the load the game is about to make. <paramref name="background"/>
+        /// says which kind of material this load is: a background is the one the game dresses
+        /// itself, so its claim answers with a clone of the game's own material rather than with
+        /// this one — see `Hooks.CloneBackground`.
+        /// </summary>
+        internal static void Arm(IntPtr reference, IntPtr material, bool background)
         {
             _armed = reference;
             _armedMaterial = material;
+            _armedBackground = background;
         }
 
         internal static void Disarm()
         {
             _armed = IntPtr.Zero;
             _armedMaterial = IntPtr.Zero;
+            _armedBackground = false;
         }
 
         /// <summary>
@@ -323,12 +334,14 @@ namespace InFalsusChartLoader
         /// Consumes the arming whatever the answer: a pending pair that outlived its load would be
         /// waiting for the next one.
         /// </summary>
-        internal static bool TryClaim(IntPtr reference, out IntPtr material)
+        internal static bool TryClaim(IntPtr reference, out IntPtr material, out bool background)
         {
             material = IntPtr.Zero;
+            background = false;
             if (_armed == IntPtr.Zero || reference != _armed) return false;
 
             material = _armedMaterial;
+            background = _armedBackground;
             Disarm();
             Claimed++;
             return true;

@@ -80,9 +80,14 @@ namespace InFalsusChartLoader
             }
 
             // A chart the import accepted and the play-through cannot decode is a file that changed
-            // underneath us. Empty is the safe answer: the song plays, silently and with no notes,
-            // instead of the scene hanging on a thrown lookup.
-            if (!decoded) ChartCodec.Empty(result);
+            // underneath us. The game's own empty chart is the answer: the song plays, silently and
+            // with no notes, instead of the scene hanging on a thrown lookup — and it is that or
+            // nothing. The tuple the decoder left behind is never what is served in its place: for
+            // the one failure this exists for, a wrong seed, it is well formed and holds a garbage
+            // note list. A refusal here sends the name to the game's own loader, which is loud in
+            // the game's own log; unreachable while `ChartCodec.Resolve` requires `_hab`, and kept
+            // as a return rather than a skip so that it cannot pass silently if it ever is.
+            if (!decoded && !ChartCodec.Empty(result)) return false;
 
             // `_R._RC`. The game's loader always clears it, and the note loop that follows compares
             // it against the previous load's value. Asked by name like every other field; a name

@@ -332,7 +332,7 @@ namespace InFalsusChartLoader
                 {
                     if (JacketCatalog.Find(songInfo, out IntPtr material))
                     {
-                        JacketCatalog.Arm(fallback, material);
+                        JacketCatalog.Arm(fallback, material, false);
                         ApAArmed++;
                     }
                     else JacketCatalog.Disarm();
@@ -367,7 +367,7 @@ namespace InFalsusChartLoader
 #endif
                 try
                 {
-                    if (JacketCatalog.TryClaim(reference, out IntPtr material))
+                    if (JacketCatalog.TryClaim(reference, out IntPtr material, out bool _))
                     {
                         MiaClaimed++;
 #if DEBUG
@@ -406,7 +406,7 @@ namespace InFalsusChartLoader
                 {
                     if (JacketCatalog.FindByChart(chartInfo, out IntPtr material))
                     {
-                        JacketCatalog.Arm(fallback, material);
+                        JacketCatalog.Arm(fallback, material, false);
                         ZoaArmed++;
                     }
                     else JacketCatalog.Disarm();
@@ -433,7 +433,13 @@ namespace InFalsusChartLoader
             {
                 try
                 {
-                    if (JacketCatalog.TryClaim(reference, out IntPtr material)) { LiaClaimed++; return material; }
+                    if (JacketCatalog.TryClaim(reference, out IntPtr material, out bool background))
+                    {
+                        LiaClaimed++;
+                        return background
+                            ? CloneBackground(owner, reference, material, methodInfo)
+                            : material;
+                    }
                 }
                 catch (Exception e)
                 {
@@ -443,6 +449,48 @@ namespace InFalsusChartLoader
 
             return _liaTramp(owner, reference, methodInfo);
         }
+
+        /// <summary>
+        /// The background is the one material the game dresses itself: the game's own material is
+        /// loaded for the reference, and what goes on the quad is a clone of it carrying this mod's
+        /// picture — so everything the game authored on its backgrounds (shader, queue, z-test, the
+        /// mask slots, blend, keywords) comes along and nothing about it is guessed here.
+        ///
+        /// <b>There is no way back to the material this mod built.</b> That material is the very
+        /// thing that hid this build's mask, so serving it after a failure would turn a loud failure
+        /// back into the silent symptom this whole round exists to kill. A run where the clone cannot
+        /// be made keeps the game's own background — what an unmodded game shows — latches this mod's
+        /// substitution off for the session, and names what failed in one Release-visible Error.
+        /// </summary>
+        private static IntPtr CloneBackground(IntPtr owner, IntPtr reference, IntPtr ours, IntPtr methodInfo)
+        {
+            // The load itself, first and unconditionally: whatever happens below, the game is handed
+            // a material for the reference it asked to load.
+            IntPtr game = _liaTramp(owner, reference, methodInfo);
+
+            if (_backgroundCloneFailed) return game;
+
+            string reason = null;
+            if (!Memory.LooksLikeObject(game)) reason = "the game's own material did not load";
+            IntPtr clone = reason == null ? BackgroundClone.Build(game, ours, out reason) : IntPtr.Zero;
+
+            if (clone != IntPtr.Zero)
+            {
+                Diagnostics.Info("the background material is a clone of the game's own");
+                return clone;
+            }
+
+            _backgroundCloneFailed = true;
+            Diagnostics.Error($"the background material could not be cloned from the game's own: " +
+                              $"{reason}; this mod's background substitution is off for this session");
+            return game;
+        }
+
+        /// <summary>
+        /// Said once, then never asked again: a clone that cannot be made in this build cannot be
+        /// made on the next load either, and every answer now costs an Error.
+        /// </summary>
+        private static bool _backgroundCloneFailed;
 
         /// <summary>
         /// 谱面内背景的取引用那一半：是我们的歌、而且这一难度有 `background` 时才替换。
@@ -472,7 +520,7 @@ namespace InFalsusChartLoader
 
                     if (armed)
                     {
-                        JacketCatalog.Arm(fallback, entry.Material);
+                        JacketCatalog.Arm(fallback, entry.Material, true);
                         UmaArmed++;
                     }
                     else

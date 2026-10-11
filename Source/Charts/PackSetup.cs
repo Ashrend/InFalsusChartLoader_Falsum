@@ -70,7 +70,8 @@ namespace InFalsusChartLoader
             IntPtr table = Memory.Ptr(packAssets + PackAssetsTable);
             if (!Memory.LooksLikeObject(table))
             {
-                Diagnostics.Warn("the pack visual table is missing; the custom pack will wear the first pack's");
+                Diagnostics.Warn("the pack visual table is missing");
+                NoRow();
                 return false;
             }
 
@@ -81,30 +82,34 @@ namespace InFalsusChartLoader
             int stride = count > 0 ? (int)(bytes / count) : 0;
             if (stride <= 0)
             {
-                Diagnostics.Warn("the pack visual table has no element size; the custom pack will wear " +
-                                 "the first pack's");
+                Diagnostics.Warn("the pack visual table has no element size");
+                NoRow();
                 return false;
             }
 
             IntPtr grown = SongCatalog.GrowArray(table, packIndex + 1);
             if (grown == IntPtr.Zero)
             {
-                Diagnostics.Warn("the pack visual table could not be grown; the custom pack will wear " +
-                                 "the first pack's");
+                Diagnostics.Warn("the pack visual table could not be grown");
+                NoRow();
                 return false;
             }
 
             // Which row it wears: the first one the game draws — the In Falsus pack's — as long as
             // that row has something to draw with. `Hooks.SourceRow` owns that question, and the row
             // accessor (`PackVisualHook.PackRowDetour`) asks it too and sends our index to the same
-            // row, so this copy is what a reader that does not go through the accessor sees — the
-            // fallback, not the fix.
+            // row, so this copy is what a reader that does not go through the accessor sees — a
+            // second copy of the same answer, not a substitute for a missing one.
             int from = Hooks.SourceRow(table, count, stride);
             if (from < 0)
             {
-                Diagnostics.Warn("no shipped pack row has a material to copy; the custom pack will " +
-                                 "wear the game's fallback");
-                from = 0;
+                // No row the game draws exists, so there is nothing to copy and nothing is. Row
+                // zero used to be copied here, which put the reserved pack's row — one the game
+                // never draws — behind the custom pack, and said so only in a Debug line. The grown
+                // table is dropped unpublished instead, and `NoRow` carries the consequence.
+                Diagnostics.Warn("no shipped pack row has a material to copy");
+                NoRow();
+                return false;
             }
 
             unsafe
@@ -119,6 +124,22 @@ namespace InFalsusChartLoader
             Diagnostics.Info($"pack visuals extended to {packIndex + 1} rows, " +
                              $"row {packIndex} copying row {from}, {stride} bytes");
             return true;
+        }
+
+        private static bool _noRowReported;
+
+        /// <summary>
+        /// One line, once, for every way the custom pack can end up without a row of visuals of its
+        /// own — the step that failed is the Debug line where it happened, and this is the
+        /// consequence a release keeps, because the pack screen drawing the pack wrong is something
+        /// the player can see.
+        /// </summary>
+        internal static void NoRow()
+        {
+            if (_noRowReported) return;
+            _noRowReported = true;
+            Diagnostics.WarnRelease("the custom pack has no row of visuals of its own; it will wear " +
+                                    "whatever this build draws for it");
         }
 
         /// <summary>

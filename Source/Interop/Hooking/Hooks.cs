@@ -30,8 +30,8 @@ namespace InFalsusChartLoader
     /// the running chart — the moment the chart starts — and its only work is setting this mod's
     /// in-play background clip running with it, so that a play and a retry both begin the picture at
     /// its first frame; see <see cref="VideoBackground"/>. Two more drive nothing either: they watch
-    /// the scene's own music being paused and resumed — `_Dg._hiA` and `._HiA`, the calls the pause
-    /// entry and the resume delegate make — and hold that same clip level with it. And four keep the custom songs' results out of the game's own
+    /// the scene's own music being paused and resumed — `_Dg._hiA` and `._KiA`, the calls the pause
+    /// entry and the resume countdown make — and hold that same clip level with it. And four keep the custom songs' results out of the game's own
     /// save — the two reads of a
     /// song's record and the one merge, on `GameResultsV4`, answered from a table of this mod's own,
     /// and the encounter result's writer, whose call is not made at all for a custom play; see

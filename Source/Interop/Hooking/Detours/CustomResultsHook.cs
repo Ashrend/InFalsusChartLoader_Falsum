@@ -39,9 +39,14 @@ namespace InFalsusChartLoader
         /// </para>
         /// <para>
         /// Every body is a test and a forward: a song that is not this mod's goes to the trampoline
-        /// with the receiver it came in with, byte for byte. Nothing is pinned — the class is asked
-        /// for by name, and its methods by name and parameter count — so a miss leaves these hooks
-        /// uninstalled and says so, rather than patching a guess.
+        /// with the receiver it came in with, byte for byte, and a song that is this mod's is
+        /// answered from this mod's table and from nowhere else. Between those two the answer is a
+        /// refusal, never the game's own table: with no custom table there is no record to read and
+        /// no place to write one, and falling through would file a custom song's result in the very
+        /// save this mod exists to keep it out of — the fallback this used to be, and the one the
+        /// whole feature is against. Nothing is pinned — the class is asked for by name, and its
+        /// methods by name and parameter count — so a miss leaves these hooks uninstalled and says
+        /// so, rather than patching a guess.
         /// </para>
         /// </summary>
         /// <summary>
@@ -88,6 +93,19 @@ namespace InFalsusChartLoader
         private static ReadResultFullFn _readResultFullTramp;
         private static NativeHook<UpdateResultFn> _updateResult;
         private static UpdateResultFn _updateResultTramp;
+
+        /// <summary>
+        /// `GameResultsV4.UpdateResult.NoChange` — what `TryUpdate` answers when nothing was
+        /// recorded, and therefore what a refused write answers too.
+        ///
+        /// The value as the game's own enum defines it (`R/NN/dump.cs`, `GameResultsV4.UpdateResult`:
+        /// `Updated = 0, New = 1, NoChange = 2`). The answer is acted on, so a refusal must not look
+        /// like a new record: measured at the one call site (`ResultsScene.Start` +0x134E), the
+        /// answer is kept and tested for `New` alone, and the caller's own `existingScore` slot is
+        /// zeroed before the call (+0x377) — so a refusal that does not touch it leaves a zero
+        /// rather than a stray value.
+        /// </summary>
+        private const int NoChange = 2;
 
         /// <summary>
         /// `bool UpdateEncounterResult(EncounterResult)` — the encounter ("回想") result's only writer.
@@ -226,8 +244,10 @@ namespace InFalsusChartLoader
 
         /// <summary>
         /// A song's record: answered from the custom table when the song is this mod's, and from
-        /// the game's own when it is not. The receiver is the only thing that changes; the answer
-        /// (including "there is no record", for a custom song never played) is the game's.
+        /// the game's own when it is not. A song of this mod's with no custom table is answered
+        /// "there is no record" — never out of the game's own table, which is the file this mod
+        /// keeps custom records out of. The receiver is the only thing that changes; the answer
+        /// (including that "no record", for a custom song never played) is the game's.
         /// </summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static byte ReadResultDetour(IntPtr results, IntPtr songInfo, byte difficulty,
@@ -243,8 +263,13 @@ namespace InFalsusChartLoader
 #endif
                 try
                 {
-                    if (CustomResults.Ready && CustomResults.IsOurs(songInfo))
+                    if (CustomResults.IsOurs(songInfo))
                     {
+                        // This mod's table, or nothing. With no table there is no record to read,
+                        // and the game's own table is not an answer: `0` is what the game's own
+                        // reader answers for a song with no record, and answering it here is the
+                        // same statement — nothing was ever recorded for this song.
+                        if (!CustomResults.Ready) return 0;
                         CustomResults.Served++;
                         table = CustomResults.Table;
                     }
@@ -278,8 +303,10 @@ namespace InFalsusChartLoader
 #endif
                 try
                 {
-                    if (CustomResults.Ready && CustomResults.IsOurs(songInfo))
+                    if (CustomResults.IsOurs(songInfo))
                     {
+                        // Same refusal as the narrow read: this mod's table, or "no record".
+                        if (!CustomResults.Ready) return 0;
                         CustomResults.Served++;
                         table = CustomResults.Table;
                     }
@@ -301,7 +328,8 @@ namespace InFalsusChartLoader
         /// The merge: a custom song's result is taken into this mod's table — which is also where
         /// its history row goes, since the append is inside the method — and the file is written
         /// right afterwards. The answer (`New` / `Updated` / `NoChange`) goes back to the game
-        /// unchanged, because the results screen acts on it.
+        /// unchanged, because the results screen acts on it. A song of this mod's with no custom
+        /// table is refused: the game's own write is not made, and the answer is `NoChange`.
         ///
         /// The game's own summary cache is not nudged. It recomputes when the *game's* table's
         /// update counter moves, and a custom play does not move it: the custom songs are no part
@@ -320,8 +348,14 @@ namespace InFalsusChartLoader
             {
                 try
                 {
-                    if (CustomResults.Ready && CustomResults.IsOurs(songInfo))
+                    if (CustomResults.IsOurs(songInfo))
                     {
+                        // Ours: this mod's table, or the write does not happen at all. `NoChange`
+                        // is what the game's own call answers when nothing was recorded, which is
+                        // the truth here — and it is the answer the results screen acts on, so a
+                        // refusal must not read as a new record. Falling through would file the
+                        // result in the game's own save, the one place this mod keeps them out of.
+                        if (!CustomResults.Ready) return NoChange;
                         ours = true;
                         table = CustomResults.Table;
                     }
@@ -360,9 +394,11 @@ namespace InFalsusChartLoader
         /// real play down. The call itself cannot say — its key is an `EncounterId`, and nothing in
         /// its arguments is a song.
         ///
-        /// Gated on <see cref="CustomResults.Ready"/> like the three beside it: with no custom results
-        /// table this mod is in its fallback, where a custom song's records go into the game's own
-        /// save exactly as they did before it existed, and the encounter is part of that.
+        /// Gated on nothing but the song: a play of this mod's never writes an encounter result —
+        /// not into the game's own save and not into this mod's — whether or not the custom results
+        /// table was ever prepared. The table gate this used to carry was a fallback in disguise:
+        /// with no table it let the write through, which filed a custom song's encounter result in
+        /// the very file this mod keeps it out of.
         /// </summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static byte UpdateEncounterDetour(IntPtr results, IntPtr newResult, IntPtr methodInfo)
@@ -380,7 +416,7 @@ namespace InFalsusChartLoader
                     // criterion fire, and if not, why" from the log instead of from another round.
                     string seen = "no payload";
 #endif
-                    if (CustomResults.Ready && Selection.TryReadSong(out playing))
+                    if (Selection.TryReadSong(out playing))
                     {
                         ours = CustomResults.IsOurs(playing);
 #if DEBUG

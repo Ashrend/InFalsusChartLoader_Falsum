@@ -141,9 +141,9 @@ namespace InFalsusChartLoader
         /// <summary>
         /// Opens `IFCL.sav` and puts a table in this class. Called once, at registration — the
         /// first moment both the game's save (for the folder) and this mod's songs (for the ids)
-        /// exist. Any failure leaves <see cref="Ready"/> false and a line in the log, and the
-        /// custom songs then keep their results in the game's own save, which is what happened
-        /// before this class existed.
+        /// exist. Any failure leaves <see cref="Ready"/> false and a line in the log, and then no
+        /// custom score is read or saved this session: the hooks refuse for this mod's songs rather
+        /// than letting their records reach the game's own save — see `CustomResultsHook`.
         /// </summary>
         internal static void Prepare()
         {
@@ -158,8 +158,8 @@ namespace InFalsusChartLoader
                 IntPtr official = save == IntPtr.Zero ? IntPtr.Zero : Memory.Ptr(save + SaveContainer);
                 if (!Memory.LooksLikeObject(official))
                 {
-                    Diagnostics.Error("the game's save could not be reached; custom scores will go into " +
-                                      "the game's own save file");
+                    Diagnostics.Error("the game's save could not be reached; the custom songs' scores " +
+                                      "will not be read or saved");
                     return;
                 }
 
@@ -172,8 +172,8 @@ namespace InFalsusChartLoader
                 string folder = officialPath == null ? null : Path.GetDirectoryName(officialPath);
                 if (string.IsNullOrEmpty(folder))
                 {
-                    Diagnostics.Error("the save folder could not be read; custom scores will go into " +
-                                      "the game's own save file");
+                    Diagnostics.Error("the save folder could not be read; the custom songs' scores " +
+                                      "will not be read or saved");
                     return;
                 }
 
@@ -188,7 +188,7 @@ namespace InFalsusChartLoader
                     // A file that is there but could not be read is left alone: starting from an
                     // empty table would overwrite the scores it holds on the next save.
                     Diagnostics.Error("the custom results file exists but could not be read, so it was " +
-                                      "left alone; custom scores will go into the game's own save file");
+                                      "left alone; the custom songs' scores will not be read or saved");
                     return;
                 }
 
@@ -241,12 +241,12 @@ namespace InFalsusChartLoader
 
         /// <summary>
         /// Says the custom table could not be prepared, with the step that stopped it. Shipping —
-        /// it is the line that explains why the custom songs' records are back in the game's own
-        /// save — and the reasons are kept short because every word of this message ships.
+        /// it is the line that says why the custom songs' scores are neither read nor saved this
+        /// session — and the reasons are kept short because every word of this message ships.
         /// </summary>
         private static void PrepareFailed(string why) =>
-            Diagnostics.Error("the custom results could not be prepared; custom scores will go into " +
-                              "the game's own save file: " + why);
+            Diagnostics.Error("the custom results could not be prepared; the custom songs' scores " +
+                              "will not be read or saved: " + why);
 
         /// <summary>
         /// Keeps one of this mod's objects alive for the session.
@@ -774,9 +774,9 @@ namespace InFalsusChartLoader
         /// The four field offsets, asked of the running game once, and whether all of them answered.
         ///
         /// A miss leaves its field at -1 and is reported by <see cref="FieldOn"/>; this then answers
-        /// false and latches, and <see cref="Prepare"/> gives up on the whole feature — the custom
-        /// results stay in the game's own save, which is what happened before this class existed,
-        /// rather than being read and written through an offset that is not there.
+        /// false and latches, and <see cref="Prepare"/> gives up on the whole feature: the custom
+        /// songs' scores are neither read nor saved this session, rather than being read and written
+        /// through an offset that is not there.
         /// </summary>
         private static bool Resolve(IntPtr containerClass)
         {

@@ -262,16 +262,21 @@ namespace InFalsusChartLoader
         /// </summary>
         private static int ResolveSourceRow()
         {
+            // A "not yet" is silent: before registration there is no table to read, and the question
+            // is re-asked on the next call. Everything past this gate has a table in hand, so a -1
+            // is a real answer — and one the player would see as the wrong picture on the custom
+            // pack — which is why it is said once (`PackSetup.NoRow`) rather than retried forever
+            // in silence, which is the shape this fix exists to remove.
             if (!PackSetup.TryGetVisuals(out IntPtr canonical) || !Memory.LooksLikeObject(canonical))
                 return -1;
 
             int offset = PackSetup.VisualsTableOffset;
-            if (offset <= 0) return -1;
-
-            IntPtr table = Memory.Ptr(canonical + offset);
+            IntPtr table = offset > 0 ? Memory.Ptr(canonical + offset) : IntPtr.Zero;
             int count = Memory.LooksLikeObject(table) ? Memory.I32(table + Offsets.Runtime.ArrayLength) : 0;
             int stride = Stride(table, count);
-            return stride <= 0 ? -1 : SourceRow(table, count, stride);
+            int row = stride <= 0 ? -1 : SourceRow(table, count, stride);
+            if (row < 0) PackSetup.NoRow();
+            return row;
         }
 
         /// <summary>

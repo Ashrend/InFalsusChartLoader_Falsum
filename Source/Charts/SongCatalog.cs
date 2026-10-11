@@ -45,29 +45,31 @@ namespace InFalsusChartLoader
 
         /// <summary>
         /// Grows the game's per-song `BitArray` to cover <paramref name="count"/> songs, with the new
-        /// bits set.
+        /// bits set. False when it cannot be done, in which case nothing may be injected.
         ///
         /// It is indexed by song position, so appending songs runs off its end — the game reads index
         /// 83 of an 83-bit array and throws `ArgumentOutOfRangeException` from inside its own index
-        /// rebuild, which then leaves every index it was building empty. The game never grows it for
-        /// songs it did not ship, so this does.
+        /// rebuild, which then leaves every index it was building empty, the game's own included.
+        /// The game never grows it for songs it did not ship, so this does — and because that throw
+        /// is the failure this call exists to prevent, failing here stops the injection rather than
+        /// letting the rebuild run into it. See `Inject` for where that is safe.
         ///
         /// Length is the part that matters. The rebuild that follows clears every bit and re-derives
         /// them from the song names -- a bit is set for the songs the song list leaves out -- so the
         /// values written here are only what the array holds in between. What the rebuild cannot do
         /// for itself is read index 83 of an 83-bit array, and that read is what it throws on.
         /// </summary>
-        private static void GrowAvailability(IntPtr songData, int count)
+        private static bool GrowAvailability(IntPtr songData, int count)
         {
             IntPtr bits = Memory.Ptr(songData + SongDataAvailability);
             if (!Memory.LooksLikeObject(bits))
             {
-                Diagnostics.Warn("SongData has no availability bits; the new songs may not be selectable");
-                return;
+                Diagnostics.Warn("SongData has no availability bits");
+                return false;
             }
 
             int oldLength = Memory.I32(bits + BitArrayLength);
-            if (oldLength >= count) return;
+            if (oldLength >= count) return true;
 
             int oldWords = (oldLength + 31) / 32;
             int newWords = (count + 31) / 32;
@@ -75,9 +77,8 @@ namespace InFalsusChartLoader
             IntPtr words = Memory.Ptr(bits + BitArrayArray);
             if (!Memory.LooksLikeObject(words))
             {
-                Diagnostics.Warn($"the availability bits have no backing array (0x{words.ToInt64():x}); " +
-                                 "the appending songs will not be selectable");
-                return;
+                Diagnostics.Warn($"the availability bits have no backing array (0x{words.ToInt64():x})");
+                return false;
             }
 
             // The backing int array is replaced, not resized: IL2CPP arrays cannot grow, and a
@@ -85,8 +86,8 @@ namespace InFalsusChartLoader
             IntPtr grown = NewArray(words, newWords);
             if (grown == IntPtr.Zero)
             {
-                Diagnostics.Warn($"no room for {newWords} availability word(s); the new songs will not be selectable");
-                return;
+                Diagnostics.Warn($"no room for {newWords} availability word(s)");
+                return false;
             }
 
             long bytes = (long)Memory.I32(words + Offsets.Runtime.ArrayLength) * sizeof(int);
@@ -110,6 +111,7 @@ namespace InFalsusChartLoader
             Memory.WritePtr(bits + BitArrayArray, grown);
             Memory.WriteI32(bits + BitArrayLength, count);
             Diagnostics.Info($"availability bits grown from {oldLength} to {count}");
+            return true;
         }
         private static int SongDataNameIndex => Offsets.SongData.NameIndex;   // Dictionary<string, SongId> _Efb
         // (`SongData._yOA` — the index rebuild — is called by name; no RVA is kept for it.)
@@ -420,6 +422,15 @@ namespace InFalsusChartLoader
             if (oldCount <= 0) { Diagnostics.Warn("SongData has no songs to take a template from"); return 0; }
 
             int newCount = oldCount + charts.Count;
+
+            // Before anything is written or published, because a failure here has to stop the whole
+            // injection. The game reads these bits by song position in the rebuild near the end of
+            // this method, and an array too short for the new songs makes that rebuild throw
+            // partway through and leave every index it was building empty — the game's own included.
+            // Nothing has been published yet at this point, so refusing costs this run's custom
+            // songs and nothing else; letting it through would leave the game's own tables broken.
+            if (!GrowAvailability(songData, newCount)) return 0;
+
             IntPtr songs = GrowArray(oldSongs, newCount);
             if (songs == IntPtr.Zero) return 0;
 
@@ -525,9 +536,8 @@ namespace InFalsusChartLoader
                 PackSetup.SetSongText(PackSetup.SongText.Illustrator, id, IllustratorOf(charts[i], 0));
             }
 
-            // Before the rebuild, because that rebuild indexes these bits by song position.
-            GrowAvailability(songData, newCount);
-
+            // The availability bits were grown at the top of this method, before anything was
+            // published — see the call there.
             Refresh(songData);
             AddPack(packData, songIds, charts.Count);
             return charts.Count;

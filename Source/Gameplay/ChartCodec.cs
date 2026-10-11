@@ -39,10 +39,15 @@ namespace InFalsusChartLoader
         /// `_S._hab()`, the game's own "here is a chart with nothing in it" constructor. 32 bytes,
         /// two freshly allocated empty lists, bpm and beats zero.
         ///
-        /// It is kept for the one case the import could not rule out: a chart that decoded when it
-        /// was checked and does not now. Handing the game an empty chart costs a silent, empty
-        /// play-through; the alternative is letting the name fall through to the game's own loader,
-        /// which does not know the name and throws inside a coroutine — and that hangs the scene.
+        /// It is the escape hatch for the one case the import could not rule out: a chart that
+        /// decoded when it was checked and does not now. Handing the game an empty chart costs a
+        /// silent, empty play-through; the alternative is letting the name fall through to the
+        /// game's own loader, which does not know the name and throws inside a coroutine — and that
+        /// hangs the scene. So it is <b>required</b>: without it a chart that fails at play time has
+        /// no answer but the decoder's own output, and for the one failure this exists for — a wrong
+        /// seed — that output is a well-formed tuple holding a garbage note list. A build that
+        /// cannot make the empty chart cannot promise that a broken chart is never served, so none
+        /// is. See <see cref="Resolve"/>.
         /// </summary>
         private static delegate* unmanaged[Cdecl]<IntPtr, IntPtr, IntPtr> _hab;
 
@@ -77,21 +82,35 @@ namespace InFalsusChartLoader
             Diagnostics.Info($"reference _S._Gab words: {JacketFactory.Words(reference, 12)}");
 #endif
 
-            // Not fatal on its own — without it a chart that fails at play time falls through to the
-            // game's loader instead of playing empty — so it is reported and the mod carries on.
+            // Required, not optional: this is the escape hatch a chart that fails at play time is
+            // served with, and a build without it can only answer such a chart with the decoder's
+            // own output — which for a wrong seed is a garbage note list. No chart may be served at
+            // all then, so the decode chain is refused whole, exactly as `_Gab`'s own miss is.
             IntPtr hab = MethodResolver.ByName("_S", "_hab");
-            _hab = hab == IntPtr.Zero
-                ? null
-                : (delegate* unmanaged[Cdecl]<IntPtr, IntPtr, IntPtr>)hab;
+            if (hab == IntPtr.Zero) return false;
 
+            _hab = (delegate* unmanaged[Cdecl]<IntPtr, IntPtr, IntPtr>)hab;
             return true;
         }
 
-        /// <summary>Fills <paramref name="tuple32"/> with the game's empty chart.</summary>
-        internal static void Empty(IntPtr tuple32)
+        /// <summary>
+        /// Fills <paramref name="tuple32"/> with the game's empty chart; false when it cannot be
+        /// made, so that the caller's failure to serve is a returned false rather than a silent
+        /// no-op over whatever bytes were there.
+        /// </summary>
+        internal static bool Empty(IntPtr tuple32)
         {
-            if (_hab == null) return;
+            // Cannot happen while `Resolve` requires `_hab` — kept as a check rather than as an
+            // assumption, because a silent no-op here is a garbage note list handed to the game.
+            if (_hab == null)
+            {
+                Diagnostics.Error("the game's empty-chart constructor is not in this build; a chart " +
+                                  "that fails to decode cannot be served");
+                return false;
+            }
+
             _hab(tuple32, IntPtr.Zero);
+            return true;
         }
 
         /// <summary>The plane a note sits on, as `_fA._Ae`. 1 main, 2 shift, 3 space, 4 sky.</summary>

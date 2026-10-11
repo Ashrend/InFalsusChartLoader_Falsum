@@ -50,6 +50,7 @@ namespace InFalsusChartLoader
     /// song is level with it again: the countdown runs behind the menu with the picture still, and
     /// nothing has to jump or be seeked when it ends. See <see cref="Follow"/>.
     /// </para>
+    /// <para>
     /// Every one of these objects is this mod's own and nothing in the game points at any of them,
     /// so each is held by a GC handle of its own — see `Root`.
     /// </para>
@@ -196,6 +197,39 @@ namespace InFalsusChartLoader
 #endif
                 return IntPtr.Zero;
             }
+        }
+
+        /// <summary>Whether this is the material this clip built and the claim handed over.</summary>
+        internal static bool Owns(IntPtr material) => material != IntPtr.Zero && material == _material;
+
+        /// <summary>
+        /// Re-parents this clip onto a clone of the game's own background material, which the claim
+        /// has just loaded — so the picture rides on everything the game authored on its backgrounds
+        /// (see `BackgroundClone`) and every later `Show`/`Restart`/`Hold` drives the clone, because
+        /// `_material` becomes it.
+        ///
+        /// <b>There is no way back to the material built here.</b> That material is the very thing
+        /// that hid this build's mask, so the black is put on the clone before it takes over rather
+        /// than after — on any failure nothing has changed yet — and a failure is never answered by
+        /// putting the old material back.
+        /// </summary>
+        internal static IntPtr Rebase(IntPtr gameMaterial, out string reason)
+        {
+            reason = null;
+            if (_material == IntPtr.Zero)
+            {
+                reason = "no clip material is loaded";
+                return IntPtr.Zero;
+            }
+
+            IntPtr clone = JacketFactory.CloneFrom(gameMaterial, out reason);
+            if (clone == IntPtr.Zero) return IntPtr.Zero;
+
+            // Black until the chart starts — the state the material was built into.
+            if (!Show(clone, _black, out reason)) return IntPtr.Zero;
+
+            _material = clone;
+            return clone;
         }
 
         /// <summary>
@@ -959,24 +993,24 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>
-        /// Puts a texture on the material the game was handed.
+        /// The picture the clip shows, put on the material given: `_material` in the ordinary way,
+        /// and a freshly made clone in <see cref="Rebase"/>, asked before the clone takes over. What
+        /// the background draws is whatever texture the material wears at the time of the draw,
+        /// which is what lets black stand in for the clip until the chart starts.
         ///
-        /// The material is this mod's own, and what the background draws is whatever texture it wears
-        /// at the time of the draw — which is what lets black stand in for the clip until the chart
-        /// starts, and the render texture take over from that moment on.
+        /// The reasons are written whether or not this is a Debug build: `Rebase`'s failure walks
+        /// out to one Release-visible Error, so the string has to exist in Release to be read there.
         /// </summary>
-        private static bool Show(IntPtr texture, out string reason)
+        private static bool Show(IntPtr material, IntPtr texture, out string reason)
         {
             reason = null;
 
-            if (_material == IntPtr.Zero) return false;
+            if (material == IntPtr.Zero) return false;
 
-            IntPtr method = Entry(_material, "set_mainTexture", 1);
+            IntPtr method = Entry(material, "set_mainTexture", 1);
             if (method == IntPtr.Zero)
             {
-#if DEBUG
                 reason = "Material.set_mainTexture could not be found";
-#endif
                 return false;
             }
 
@@ -984,14 +1018,14 @@ namespace InFalsusChartLoader
             args[0] = texture;
 
             IntPtr raised = IntPtr.Zero;
-            Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(method, _material, (void**)args, ref raised);
+            Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(method, material, (void**)args, ref raised);
             if (raised == IntPtr.Zero) return true;
 
-#if DEBUG
             reason = $"Material.set_mainTexture raised: {Raised.Text(raised)}";
-#endif
             return false;
         }
+
+        private static bool Show(IntPtr texture, out string reason) => Show(_material, texture, out reason);
 
         /// <summary>An absolute Windows path, as the URL a `VideoPlayer` opens a local file by.</summary>
         private static string FileUrl(string path) => "file:///" + path.Replace('\\', '/');
