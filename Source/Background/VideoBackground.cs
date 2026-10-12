@@ -27,12 +27,18 @@ namespace InFalsusChartLoader
     /// plays before the chart does, and a restart does not restart it" has.
     /// </para>
     /// <para>
-    /// What the material <i>shows</i> is chosen as well, because "prepared and idle" is not a state
-    /// this build keeps a clip in — a prepared player here begins playing on its own, so a clip left
-    /// merely prepared still fills the screen. The render texture goes on the material only when the
-    /// song begins (<see cref="Follow"/>); before that the material wears Unity's black texture, so
-    /// the background behind the game's starting sequence is black rather than a video already in
-    /// progress.
+    /// What the material <i>shows</i> is the clip's own texture, from the moment the clip is
+    /// prepared: the background behind the game's starting sequence is the clip's first frame — a
+    /// still — and not a black panel. That still has to be held rather than left to the player,
+    /// because "prepared and idle" is not a state this build keeps a clip in: a prepared player here
+    /// begins playing on its own, so it is stopped again the moment it does — see the watch in
+    /// <see cref="Follow"/> — and parked on its first frame until the song begins
+    /// (<see cref="Park"/>).
+    /// </para>
+    /// <para>
+    /// The clip is played once and not looped: when its end arrives the last frame stays on the
+    /// background for the rest of the play, and the next play of the chart — a retry — begins it
+    /// again from the first frame. See <see cref="FilmOver"/>.
     /// </para>
     /// <para>
     /// Where the clip <i>stands</i> is not left to itself either. The picture is placed on the game's
@@ -88,17 +94,14 @@ namespace InFalsusChartLoader
         private static IntPtr _material;    // the material that shows the texture
         private static string _playing;     // the file the player was last pointed at
 
-        // Unity's own black texture, which the material wears until the chart starts. Rooted with the
-        // rest: the wrapper the property answers with is the mod's only reference to it, and a
-        // collected wrapper would leave this pointer dangling — see `Root`.
-        private static IntPtr _black;
-
         // Where the clip is in its life: `_armed` from the moment the game hands the chart over
         // (`Restart`) until `Follow` has started the clip with the song, `_running` once that has
-        // happened, and `_held` while the game's own music — and therefore the clip — is paused.
+        // happened, `_ended` when the clip has played out and its last frame is the background, and
+        // `_held` while the game's own music — and therefore the clip — is paused.
         private static bool _armed;
         private static bool _running;
         private static bool _held;
+        private static bool _ended;
 
         // The chart clock when the pause came, and whether it has since been seen to move back — which
         // is the game answering a resume. Both are the pause's and the resume's, and `Follow` is where
@@ -117,7 +120,7 @@ namespace InFalsusChartLoader
 
         // The collector is conservative and scans thread stacks, but none of these ever lives in a
         // local for the whole run — they are in static fields, which it does not scan. See `Root`.
-        private static IntPtr _objectHandle, _playerHandle, _textureHandle, _materialHandle, _blackHandle;
+        private static IntPtr _objectHandle, _playerHandle, _textureHandle, _materialHandle;
 
         private static bool _unavailable;   // asked once; the answer cannot change
 
@@ -127,9 +130,10 @@ namespace InFalsusChartLoader
         ///
         /// Called once per play, while the gameplay scene is being put together. The clip is left not
         /// playing: what sets it running is the chart itself — see <see cref="Restart"/> — so the
-        /// picture begins when the chart does, not while the scene is still loading. A second play
-        /// of the same file (a retry) holds the previous playback still on its way through, and the
-        /// clip is placed back at its first frame when that chart starts.
+        /// picture begins when the chart does, not while the scene is still loading. What the
+        /// background shows meanwhile is the clip's own texture, stopped on its first frame; a second
+        /// play of the same file (a retry) holds the previous playback still on its way through, and
+        /// the frame is put back when that chart is handed over.
         /// </summary>
         internal static IntPtr Material(string path, out string reason)
         {
@@ -140,18 +144,21 @@ namespace InFalsusChartLoader
             if (_playing == path && _material != IntPtr.Zero)
             {
                 // The chart this clip belongs to is being set up again — a retry, or the song entered
-                // a second time — so the previous playback is held still here and `Restart` will put
-                // the clip back to its first frame when the chart begins. `Pause` rather than `Stop`
-                // for that: `Stop` sets the time to zero but also drops the player's decoder and
-                // makes it unprepared, which is work for nothing when the same clip is about to run.
+                // a second time — so the previous playback is held still here and `Park` will put the
+                // clip back to its first frame when the chart is handed over. `Pause` rather than
+                // `Stop` for that: `Stop` sets the time to zero but also drops the player's decoder
+                // and makes it unprepared, which is work for nothing when the same clip is about to
+                // run.
                 if (!Call("Pause", 0, _player, out reason)) return IntPtr.Zero;
 
-                // Black until the chart starts again — see the class remarks.
-                if (!Show(_black, out reason)) return IntPtr.Zero;
+                // The clip's own frame until the chart is handed over — see the class remarks. It is
+                // parked a moment later, in `Restart`, where the first frame becomes definite.
+                if (!Show(_texture, out reason)) return IntPtr.Zero;
 
                 _armed = false;
                 _running = false;
                 _held = false;
+                _ended = false;
                 return _material;
             }
 
@@ -165,7 +172,12 @@ namespace InFalsusChartLoader
                 if (!Set("set_url", 1, FileUrl(path), out reason)) return IntPtr.Zero;
                 if (!Set("set_renderMode", 1, 2 /* VideoRenderMode.RenderTexture */, out reason)) return IntPtr.Zero;
                 if (!Set("set_targetTexture", 1, _texture, out reason)) return IntPtr.Zero;
-                if (!Set("set_isLooping", 1, true, out reason)) return IntPtr.Zero;
+
+                // Played once, not looped: a clip shorter than its song holds its last frame on the
+                // background instead of running back to the first one and playing it all again. See
+                // `FilmOver`, which is what makes the hold final rather than a frame's reprieve.
+                if (!Set("set_isLooping", 1, false, out reason)) return IntPtr.Zero;
+
                 if (!Set("set_playOnAwake", 1, false, out reason)) return IntPtr.Zero;
 
                 // No audio: see the summary. Set on every start rather than once, because Unity's
@@ -174,15 +186,19 @@ namespace InFalsusChartLoader
 
                 if (!Call("Prepare", 0, _player, out reason)) return IntPtr.Zero;
 
-                // Black until the chart starts: what the screen shows is the material's texture, and
-                // a prepared player on this build begins playing on its own, so "prepared but idle"
-                // cannot be relied on to keep the clip off the screen. See the class remarks.
-                if (!Show(_black, out reason)) return IntPtr.Zero;
+                // The clip's own picture from here on: what the screen shows is the material's
+                // texture, and that is the render texture from the moment the clip is prepared. A
+                // prepared player on this build begins playing on its own, so the first frame is not
+                // simply waited for — the watch in `Follow` catches that self-play and `Park` puts the
+                // clip back on the frame. See the class remarks.
+                if (!Show(_texture, out reason)) return IntPtr.Zero;
 
                 _playing = path;
+                _length = -1.0;                          // the previous clip's length is not this one's
                 _armed = false;
                 _running = false;
                 _held = false;
+                _ended = false;
                 Diagnostics.Info($"background video '{System.IO.Path.GetFileName(path)}' ready; it starts with the song");
                 return _material;
             }
@@ -209,7 +225,7 @@ namespace InFalsusChartLoader
         /// `_material` becomes it.
         ///
         /// <b>There is no way back to the material built here.</b> That material is the very thing
-        /// that hid this build's mask, so the black is put on the clone before it takes over rather
+        /// that hid this build's mask, so the picture is put on the clone before it takes over rather
         /// than after — on any failure nothing has changed yet — and a failure is never answered by
         /// putting the old material back.
         /// </summary>
@@ -225,8 +241,8 @@ namespace InFalsusChartLoader
             IntPtr clone = JacketFactory.CloneFrom(gameMaterial, out reason);
             if (clone == IntPtr.Zero) return IntPtr.Zero;
 
-            // Black until the chart starts — the state the material was built into.
-            if (!Show(clone, _black, out reason)) return IntPtr.Zero;
+            // The clip's own picture — the state the material was built into.
+            if (!Show(clone, _texture, out reason)) return IntPtr.Zero;
 
             _material = clone;
             return clone;
@@ -234,7 +250,8 @@ namespace InFalsusChartLoader
 
         /// <summary>
         /// The game's starting sequence has handed the chart over (`GameScene._rk`, the call every
-        /// path of that sequence ends on): the clip is now to run with the song.
+        /// path of that sequence ends on): the chart is about to run, and the clip is parked on its
+        /// first frame and armed for it.
         ///
         /// Nothing is started here, and that is the point. Between this call and the music there are
         /// seconds of the game's own lead-in — the chart's clock starts at minus three and walks up
@@ -242,32 +259,45 @@ namespace InFalsusChartLoader
         /// the chart for the rest of the play. That was measured, not reasoned about: the clip read
         /// 2.9 seconds ahead of the song at the first pause of a run. The clip starts when the clock
         /// reaches zero, in <see cref="Follow"/>, and a retry runs this sequence again, which is what
-        /// restarts the clip with it.
-        ///
-        /// A run with no clip of this mod's loaded — a shipped song, or a custom one that named no
-        /// `background` — has nothing to start and is left alone.
+        /// takes the clip back to its first frame for the new play.
         /// </summary>
         internal static void Restart()
         {
             if (_player == IntPtr.Zero || _playing == null) return;
 
-            // Parked on the song's zero now, while the black is still up, and held there until the
-            // song begins. Placing it here rather than at the start is what keeps the way in from
-            // the black from flashing: a seek leaves the render texture without the frame that was
-            // asked for, and nobody sees that happen while the material is still wearing the black.
-            // By the start, the frame is there and the picture only has to be played.
-            double clock = ChartClock();
-            double place = double.IsNaN(clock) || clock < 0.0 ? 0.0 : clock;
-
+            // Parked on its first frame here, and held there until the song begins. Nothing is shown
+            // or hidden to do it — the material is already wearing the clip's texture — so this is
+            // simply where the clip's position is set, and any projection the player has run on its
+            // own before this point is undone by the seek. See `Park`.
             string reason = null;
-            if (Flag("get_isPrepared") && !Set("set_time", 1, place, out reason))
-                Diagnostics.Warn($"the background video could not be placed for the song: {reason}");
-            Call("Pause", 0, _player, out reason);
+            Park(out reason);
 
             _armed = true;
             _running = false;
             _held = false;
+            _ended = false;
             Diagnostics.Info($"background video '{System.IO.Path.GetFileName(_playing)}' waits for the song");
+        }
+
+        /// <summary>
+        /// Puts the clip back on its first frame and holds it there, paused. Called when the chart is
+        /// handed over (<see cref="Restart"/>) and again just before the song begins
+        /// (<see cref="Start"/>), so the background always goes into a play from the first frame.
+        ///
+        /// The placement is `Pause` then `set_time(0)` — the pair the game's own video players use to
+        /// position a clip — and the seek is only asked of a prepared player, the state a seek is
+        /// refused in being the one that has not opened at all. Both calls are made as early as they
+        /// are because a seek leaves the render texture without the frame that was asked for: putting
+        /// the clip here gives that blank the whole of the starting sequence to settle in, rather than
+        /// running into it at the instant the song begins.
+        /// </summary>
+        private static void Park(out string reason)
+        {
+            if (Flag("get_isPrepared") && !Set("set_time", 1, 0.0, out reason))
+                Diagnostics.Warn($"the background video could not be placed for the song: {reason}");
+
+            if (!Call("Pause", 0, _player, out reason))
+                Diagnostics.Warn($"the background video could not be held for the song: {reason}");
         }
 
         /// <summary>
@@ -302,13 +332,6 @@ namespace InFalsusChartLoader
         private const string PlaceFailed =
             "the background video could not be placed on the chart clock; it will run out of step with the chart";
 
-        /// <summary>
-        /// Said in every build when the clip cannot be started at all: the background stays black —
-        /// what it was before the song — and the person playing is the one who would see that.
-        /// </summary>
-        private const string StartFailed =
-            "the background video could not be started with the song; the background will stay black";
-
         private static bool _placeWarned;
 
         // The last clock the frame saw, and when the last placement was made. Both are `Place`'s:
@@ -317,23 +340,44 @@ namespace InFalsusChartLoader
         private static double _lastClock = double.NaN;
         private static long _lastPlace = long.MinValue;
 
+        // The clip's own length, asked once per file — see `FilmOver` — and -1 until it is asked.
+        private static double _length = -1.0;
+
+        /// <summary>
+        /// Said in every build when the clip cannot be started at all: the background keeps whatever
+        /// frame the clip last showed — its first, when the failure is the very first play — and the
+        /// picture then does not move for the song. The person playing is the one who would see that.
+        /// </summary>
+        private const string StartFailed =
+            "the background video could not be started with the song; the background will not move with it";
+
         /// <summary>
         /// The frame: keeps the picture on the game's own chart clock.
         ///
         /// Called once per frame from the mod's own update, which is the one thing this mod has that
-        /// runs while a chart does. Three things happen here, in order: the clip is started when the
-        /// clock reaches the song's zero (see <see cref="Restart"/> for why not before it), nothing
-        /// happens while the game's own music is held (<see cref="Hold"/> holds the clip too), and a
-        /// picture that has slipped off the clock by more than <see cref="ClockSlack"/> is placed
-        /// back onto it — the resume puts the song back by the countdown's remainder without telling
-        /// anyone, and this is where that, and anything else, is made level again.
+        /// runs while a chart does. Here, in order: the clip is started when the clock reaches the
+        /// song's zero (see <see cref="Restart"/> for why not before it), nothing happens while the
+        /// game's own music is held (<see cref="Hold"/> holds the clip too), and a picture that has
+        /// slipped off the clock by more than <see cref="ClockSlack"/> is placed back onto it — the
+        /// resume puts the song back by the countdown's remainder without telling anyone, and this is
+        /// where that, and anything else, is made level again. Once the clip has played out, its last
+        /// frame is left alone for the rest of the song (<see cref="FilmOver"/>).
+        ///
+        /// The park is the one thing that happens outside the armed part of the run: this build
+        /// begins playing a prepared clip on its own, and a clip left doing that would open the scene
+        /// on a frame that is already moving instead of on the still the background is meant to show.
+        /// So a player that has started a clip of this mod's is caught and parked on the first frame,
+        /// and the clock being before the song is what says the wait is still on — the self-play
+        /// begins the moment the clip is prepared, seconds before the game hands the chart over.
         ///
         /// A run whose clock cannot be read is reported once and left off: a picture that cannot be
-        /// placed on the chart is worse than no picture.
+        /// placed on the chart is worse than no picture. A run with no clip of this mod's loaded — a
+        /// shipped song, or a custom one that named no `background` — never gets here at all, because
+        /// a parked clip is not playing one.
         /// </summary>
         internal static void Follow()
         {
-            if (_player == IntPtr.Zero || _playing == null || !_armed) return;
+            if (_player == IntPtr.Zero || _playing == null) return;
 
             double clock = ChartClock();
             if (double.IsNaN(clock))
@@ -346,6 +390,18 @@ namespace InFalsusChartLoader
 
             bool moved = clock != _lastClock;           // whether the chart is running at all; see `Place`
             _lastClock = clock;
+
+            if (!_running && !_held && clock < 0.0 && Flag("get_isPlaying"))
+            {
+                // The player has started this clip on its own — see the summary. The frame is put back
+                // and the clip held there; the seek is given the rest of the wait to settle, so what is
+                // seen is a still and not the blank a seek leaves behind.
+                string parked = null;
+                Park(out parked);
+                return;
+            }
+
+            if (!_armed) return;                        // nothing of this mod's is being set up or played
 
             if (_held)
             {
@@ -377,13 +433,70 @@ namespace InFalsusChartLoader
                 return;
             }
 
+            if (_ended) return;                         // the clip played out; its last frame stays
+
             if (!_running)
             {
                 if (clock >= 0.0) Start(clock);
                 return;
             }
 
+            if (FilmOver()) return;                     // the last frame stays; see `FilmOver`
+
             Place(clock, moved);
+        }
+
+        /// <summary>
+        /// Whether the clip has played out — and if it has, the frame it stopped on stays on the
+        /// background for the rest of the play.
+        ///
+        /// The clip is not looped, so its end arrives once and the player holds its last frame from
+        /// there; the hold is made final by stopping the corrections that would otherwise keep
+        /// pulling the picture toward a chart clock that has run past the film. Only a clock that has
+        /// run past the film's own length counts: while the clip still has picture left, an end
+        /// reported by the player is one this mod does not explain — a `Prepare` being overtaken by
+        /// the play, a seek still landing — and it is placed back onto the clock it belongs to. The
+        /// clip is a picture for the song, so the clock is the one reading that tells the two apart.
+        ///
+        /// The length is asked once per clip; a player that will not say answers with zero, which is
+        /// never past, so a clip that cannot be measured keeps the correcting behaviour it had.
+        /// </summary>
+        private static bool FilmOver()
+        {
+            if (_ended) return true;
+            if (_running && !Flag("get_isPlaying"))
+            {
+                double length = Length();
+                double clock = ChartClock();
+                if (length > 0.0 && !double.IsNaN(clock) && clock >= length)
+                {
+                    _ended = true;
+                    _running = false;
+                    Diagnostics.Info("background video played out; its last frame stays for the song");
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// How long the clip is, in seconds — or zero when the player will not say. Asked once per
+        /// clip, because the answer cannot change while the file is the same; `get_length` answers
+        /// with a double, boxed like every other value return.
+        /// </summary>
+        private static double Length()
+        {
+            if (_length >= 0.0) return _length;
+
+            IntPtr method = Entry(_player, "get_length", 0);
+            if (method == IntPtr.Zero) return 0.0;
+
+            IntPtr raised = IntPtr.Zero;
+            IntPtr boxed = Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(method, _player, null, ref raised);
+            if (raised != IntPtr.Zero || boxed == IntPtr.Zero) return 0.0;
+
+            return _length = *(double*)(boxed + Offsets.Runtime.BoxedData);
         }
 
         /// <summary>
@@ -435,25 +548,21 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>
-        /// Starts the clip where the song is, once per chart.
+        /// Starts the clip at its first frame, once per chart.
         ///
-        /// The clip was parked on this moment while the black was still up (<see cref="Restart"/>),
-        /// so there is usually nothing to seek and the way in is a `Play`. That matters: a seek
-        /// leaves the render texture without the frame it was asked for, and the blank it shows
-        /// instead is seen as a flash on the way in from the black. A seek is still made when the
-        /// clip is not where the song is — a late arm — and the seek is only asked of a prepared
-        /// player, the state a seek is refused in being the one that has not played at all.
+        /// The clip was parked on that frame in <see cref="Restart"/> and its armed wait is guarded
+        /// against being broken by the player's own start, so the clip is already there — and the park
+        /// is asked for again so that it certainly is: its seek has had that whole wait to land, which
+        /// is what keeps the blank a seek leaves behind from being run into at the instant the song
+        /// begins. The seek is only asked of a prepared player, the state a seek is refused in being
+        /// the one that has not opened at all.
         /// </summary>
         private static bool Start(double clock)
         {
             string reason = null;
 
-            double at = Time();
-            bool parked = at >= 0.0 && at <= clock + ClockSlack && at >= clock - ClockSlack;
-
-            if (!Show(_texture, out reason) ||
-                (!parked && Flag("get_isPrepared") && !Set("set_time", 1, clock, out reason)) ||
-                !Call("Play", 0, _player, out reason))
+            Park(out reason);
+            if (!Show(_texture, out reason) || !Call("Play", 0, _player, out reason))
             {
                 Diagnostics.Warn($"the background video could not be started with the song: {reason}");
                 Diagnostics.WarnRelease(StartFailed);
@@ -597,11 +706,13 @@ namespace InFalsusChartLoader
         /// any chart of this mod's has started must not start one, a song-end fade must not restart a
         /// running clip, and one that arrives after `Restart` (which clears the hold) is not a resume.
         /// Where the picture is placed from is the clock, which is where the `_KiA` road lands a
-        /// second out and the frame road is already level.
+        /// second out and the frame road is already level. A clip that has played out stays on its
+        /// last frame: there is nothing left of it to take up again.
         /// </summary>
         internal static void Resume(bool atMusicReturn = false)
         {
             if (_player == IntPtr.Zero || !_running || !_held) return;
+            if (_ended) return;
             if (atMusicReturn && !double.IsNaN(_heldClock)) return;   // the frame's road is the right one
 
             _held = false;
@@ -629,7 +740,8 @@ namespace InFalsusChartLoader
         /// <summary>
         /// What the player is doing, for the probe: `none` before anything was asked for, `load`
         /// while the clip is being opened, `ready` when it is prepared but not running, `play` while
-        /// it runs — and `fail` when it was asked for and could not be built.
+        /// it runs, `end` when the clip has played out and its last frame is what the background
+        /// shows — and `fail` when it was asked for and could not be built.
         /// </summary>
         internal static string State
         {
@@ -637,6 +749,7 @@ namespace InFalsusChartLoader
             {
                 if (_unavailable) return "fail";
                 if (_player == IntPtr.Zero) return "none";
+                if (_ended) return "end";
 
                 if (Flag("get_isPlaying")) return "play";
                 if (Flag("get_isPrepared")) return "ready";
@@ -689,14 +802,11 @@ namespace InFalsusChartLoader
             string reason = null;
             Call("Stop", 0, _player, out reason);
 
-            // Whatever still hangs off this material goes back to black; the next song either names a
-            // clip of its own — which `Material` prepares — or leaves the game's own background alone.
-            Show(_black, out _);
-
             _playing = null;
             _armed = false;
             _running = false;
             _held = false;
+            _ended = false;
         }
 
         /// <summary>
@@ -722,31 +832,6 @@ namespace InFalsusChartLoader
 
             IntPtr objectClass = Require(CoreAssembly, CoreNamespace, "Object", out reason);
             if (objectClass == IntPtr.Zero) return false;
-
-            // Unity's own black texture, which the material wears until the chart starts — see the
-            // class remarks. Asked for here so that a build without it is a reported refusal rather
-            // than a background that silently keeps showing the clip.
-            IntPtr texture2DClass = Require(CoreAssembly, CoreNamespace, "Texture2D", out reason);
-            if (texture2DClass == IntPtr.Zero) return false;
-
-            IntPtr blackMethod = EntryOn(texture2DClass, "get_blackTexture", 0);
-            if (blackMethod == IntPtr.Zero)
-            {
-#if DEBUG
-                reason = "Texture2D.blackTexture could not be found";
-#endif
-                return false;
-            }
-
-            if (!Invoke(blackMethod, IntPtr.Zero, null, 0, out reason)) return false;
-            IntPtr black = LastResult;
-            if (!Memory.LooksLikeObject(black))
-            {
-#if DEBUG
-                reason = "Texture2D.blackTexture answered with nothing";
-#endif
-                return false;
-            }
 
             // The GameObject, named so that it is recognisable in a scene dump.
             IntPtr go = Il2CppInterop.Runtime.IL2CPP.il2cpp_object_new(gameObjectClass);
@@ -843,12 +928,10 @@ namespace InFalsusChartLoader
             _player = player;
             _texture = texture;
             _material = material;
-            _black = black;
             Root(ref _objectHandle, go);
             Root(ref _playerHandle, player);
             Root(ref _textureHandle, texture);
             Root(ref _materialHandle, material);
-            Root(ref _blackHandle, black);
 
             Diagnostics.Info("the background video player is ready");
             return true;
