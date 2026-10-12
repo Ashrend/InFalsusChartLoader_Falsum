@@ -45,7 +45,7 @@ Debug构建产物位于 `bin/Debug/InFalsusChartLoader.dll`。
   //"illust": ["I don’t know!", "I know!", "oh!", "hey?"],
   //也可以为每张曲绘单独设置画师[Minimal,Evolved,Ultimate,Forbidden]
   "jacket": "jkt.png",                        //曲绘，只接受png，需要为正方形
-  //"picture": ["jkt.png", "jtk.png", "kjt.png", "ktj.png"],
+  //"jacket": ["jkt.png", "jtk.png", "kjt.png", "ktj.png"],
   //也可以为每张谱面单独设置曲绘[Minimal,Evolved,Ultimate,Forbidden]
   "background": "bg.mp4",
   //谱面内的背景，接受png与mp4；为可选参数
