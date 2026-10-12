@@ -232,6 +232,18 @@ namespace InFalsusChartLoader
                 // written until a custom song's result is merged into the table. Saying "created"
                 // sent the last run looking for a file that was not there yet.
                 Diagnostics.Load("custom results: " + (exists ? "opened " : "prepared ") + path);
+
+                // The stored song ids, brought level with this run's — see `ResultKeys`. Here, after
+                // the table is published and has answered its self-test, because a repair that
+                // cannot be made must cost the old scores and nothing else. A pass that moved
+                // records is written out at once, so the file is level even if nothing is played
+                // this session.
+                ResultKeys.Migrate(table);
+                if (ResultKeys.Refiled > 0)
+                {
+                    Diagnostics.Load($"custom results: {ResultKeys.Refiled} record(s) filed under this build's song ids");
+                    Save();
+                }
             }
             catch (Exception e)
             {

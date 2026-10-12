@@ -216,6 +216,10 @@ namespace InFalsusChartLoader
             // not is a save that returned cleanly; neither counting is a save that did not land.
             $"late={CustomResults.Late} " +
             $"enc={CustomResults.EncounterWrites}/{CustomResults.EncounterDropped} " +
+            // `keyfix` is the stored song ids moved onto this run's ids — the records an earlier
+            // build's slots would otherwise hide. A save carried across a game update should show
+            // this number moving; `0` with custom results on disk means the ids were already level.
+            $"keyfix={ResultKeys.Refiled} " +
             // The read bookkeeping. `outstanding` is the game's own count of reads handed to the
             // native side and not yet finished: it is the number this mod's leak used to inflate,
             // and it should hover around the few reads actually in flight, not grow with every
