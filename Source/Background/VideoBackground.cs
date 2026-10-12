@@ -144,15 +144,18 @@ namespace InFalsusChartLoader
             if (_playing == path && _material != IntPtr.Zero)
             {
                 // The chart this clip belongs to is being set up again — a retry, or the song entered
-                // a second time — so the previous playback is held still here and `Park` will put the
-                // clip back to its first frame when the chart is handed over. `Pause` rather than
-                // `Stop` for that: `Stop` sets the time to zero but also drops the player's decoder
-                // and makes it unprepared, which is work for nothing when the same clip is about to
-                // run.
-                if (!Call("Pause", 0, _player, out reason)) return IntPtr.Zero;
+                // a second time — so the clip is put back on its first frame here, at the moment the
+                // scene is being prepared, rather than waiting for `Restart`. That wait is not short:
+                // measured on this build, the claim lands while the loading screen is still up and
+                // `_rk` arrives five seconds later, and in between the material is already wearing the
+                // render texture — so a clip merely paused here shows the frame it was paused on for
+                // the whole way in. `Park` seeks and pauses; `Stop` would place it too at the cost of
+                // dropping the player's decoder and making it unprepared, which is work for nothing
+                // when the same clip is about to run.
+                string parked = null;
+                Park(out parked);
 
-                // The clip's own frame until the chart is handed over — see the class remarks. It is
-                // parked a moment later, in `Restart`, where the first frame becomes definite.
+                // The clip's own first frame from here on — see the class remarks.
                 if (!Show(_texture, out reason)) return IntPtr.Zero;
 
                 _armed = false;
