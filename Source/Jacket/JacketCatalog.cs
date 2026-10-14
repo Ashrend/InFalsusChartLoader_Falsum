@@ -74,12 +74,16 @@ namespace InFalsusChartLoader
         ///
         /// <code>
         ///   _apA(in SongInfo, bool)      + _MIA&lt;T&gt;(…)      ← 卡片走这条
-        ///   _ZOA(in SongChartInfo, bool) + _LIA&lt;T&gt;(…)      ← 加载/转场界面走这条
+        ///   _ZOA(in SongChartInfo, bool) + _MIA&lt;T&gt;(…)      ← 其余界面走这条（转场界面用的是它的阻塞版 `_LIA`）
         /// </code>
         ///
         /// 后一条里 `_ZOA` 只拿到一个 `SongChartInfo` —— **里面没有歌，只有谱面 id**，
-        /// 而两首歌完全可以用同一个谱面文件名，所以按 id 认会撞。按**地址**认不会：
-        /// 那个元素一定落在某首自制歌的 `ChartInfos` 数组里，逐一比四个槽位即可。
+        /// 而两首歌完全可以用同一个谱面文件名，所以"这个名字像是我们的"什么都证明不了。
+        /// 认的是**这份记录是谁的**，两种指针各由自己那一半回答：传的是我们的数组元素 ⇒
+        /// **地址**就是答案（它一定落在某首自制歌的 `ChartInfos` 数组里，第几格就是哪个难度）；
+        /// 传的是栈上的**结构体副本** ⇒ 地址什么都没说，由**正在打的那首歌**回答
+        /// （`Selection` 的载荷，与谱面内背景同一条来源），副本里的名字只用来对账 ——
+        /// 见 `FindByChart`。
         /// </summary>
         private static readonly List<(IntPtr Charts, ChartInfo Info)> ChartArrays =
             new List<(IntPtr, ChartInfo)>();
@@ -95,7 +99,8 @@ namespace InFalsusChartLoader
         /// `_ZOA` 那条路的认歌 + 取材质。`chartInfo` 是它收到的那个 `SongChartInfo` 的地址。
         ///
         /// <para>
-        /// 两条判据，因为调用者有**两种传法**，而它们给出的是两种不同的指针：
+        /// 认歌问的只有一件事：**这份记录是谁的**。调用者有**两种传法**，给出的指针是两种样子，
+        /// 各由自己那一半回答 —— 答不出就放弃，不拿别的顶上：
         /// </para>
         /// <list type="number">
         /// <item><description>
@@ -103,10 +108,13 @@ namespace InFalsusChartLoader
         /// 一定落在某首自制歌的 `ChartInfos` 数组里，逐一比四个槽位即可，精确且不怕重名。
         /// </description></item>
         /// <item><description>
-        /// <b>名字</b> —— 传的是**结构体副本**的地址（`SongInfoContainer` 把记录拷进局部变量
-        /// 再取地址，而 `SongChartInfo` 是按值传的 struct）。副本落在栈上，地址认不出来，
-        /// 但副本里唯一的引用字段 `Id` 仍指着同一个字符串 —— 谱面的文件名。
-        /// **重名时放弃**：两首歌用同一个文件名的话，这个名字说明不了是哪一首，宁可退回兜底
+        /// <b>正在打的那首歌</b> —— 传的是**结构体副本**的地址（`SongInfoContainer` 把记录拷进
+        /// 局部变量再取地址，而 `SongChartInfo` 是按值传的 struct）。副本落在栈上，地址对它
+        /// 什么都没说；回答它的是**这一局那首歌**（`Selection` 的载荷 —— 与谱面内背景同一条
+        /// 来源），它才是判据，副本里的 `Id`（谱面文件名）与 `Difficulty`（哪一格）只是拿来
+        /// **对账**的 —— 对不上、或者选曲那边说不出是哪首歌 ⇒ 放弃。
+        /// 只按名字认是不行的：两首歌可以用同一个谱面文件名（一个文件夹让几个难度共用一个文件，
+        /// 或干脆照抄了官谱的文件名），那时名字说明不了这是谁的记录 —— 宁可让游戏画它自己的图，
         /// 也不能把别人的曲绘贴上去。
         /// </description></item>
         /// </list>
@@ -135,23 +143,41 @@ namespace InFalsusChartLoader
             string id = Memory.Text(Memory.Ptr(chartInfo), 128);
             if (id == null) return false;
 
-            // The copy carries the chart's file name, and that name is one of the four the `if` file
-            // listed — so the index it matched at is the difficulty, recovered the same way the
-            // address criterion recovers it.
-            ChartInfo owner = null;
-            int at = -1;
-            foreach ((IntPtr _, ChartInfo info) in ChartArrays)
+            // Everything below reads this mod's own records, and before the tables are resolved there
+            // are none — every offset is -1, which is not an offset but the byte before the record.
+            // A session that never registered a song has nothing to match against, so "not ours" is
+            // the honest answer rather than a warning about a selection that could not help anyway.
+            if (!Offsets.Ready) return false;
+
+            // The difficulty is the record's own — the flag this slot was written with — rather than
+            // the slot a scan of the four file names might have matched at: a folder may name one file
+            // for several difficulties, and then the name cannot say which of them this record is.
+            int at = SongCatalog.DifficultyIndexOf(Memory.U8(chartInfo + Offsets.Chart.Difficulty));
+            if (at < 0) return false;
+
+            // Which song's record this is: the one being played. The copies that arrive this way are
+            // the in-play panel's — `_ZOA`'s one caller that hands over a stack copy instead of an
+            // array element — and that panel draws the song the player started, so the selection is
+            // the criterion and the record is only checked against it. Deciding by the file name
+            // alone would hand this song's picture to any other song that files the same name, a
+            // shipped chart included.
+            if (!Selection.TryReadSong(out IntPtr playing))
             {
-                for (int d = 0; d < ChartInfo.Difficulties; d++)
-                {
-                    if (info.ChartNames[d] != id) continue;
-                    if (owner != null && owner != info) return false;
-                    owner = info;
-                    at = d;
-                }
+                Diagnostics.Warn($"no song is selected to match the chart '{id}' against; the game's own " +
+                                 "picture is used");
+                return false;
             }
 
-            if (owner == null) return false;
+            if (!SongCatalog.ById.TryGetValue(Memory.U16(playing + Offsets.Song.Id), out ChartInfo owner))
+                return false;
+
+            if (owner.ChartNames[at] != id)
+            {
+                Diagnostics.Warn($"the song being played does not file a chart called '{id}' at this " +
+                                 "difficulty; the game's own picture is used");
+                return false;
+            }
+
             if (!ByBase.TryGetValue(owner.BaseName, out IntPtr[] ownerMaterials)) return false;
 
             material = At(ownerMaterials, at);

@@ -392,7 +392,8 @@ namespace InFalsusChartLoader
         /// 按难度取曲绘的那条路：是我们的谱面就把刚拿到的引用记下来，等它被加载时替换。
         ///
         /// 与 `ApADetour` 同一套握手，区别只在"认歌"用的是什么 —— 这里只有 `SongChartInfo`，
-        /// 没有 `SongInfo`，所以按**地址**认（见 `JacketCatalog.FindByChart`）。
+        /// 没有 `SongInfo`。认的是**这份记录是谁的**：传数组元素时**地址**就是答案，
+        /// 传结构体副本时由**正在打的那首歌**回答（见 `JacketCatalog.FindByChart`）。
         /// </summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static IntPtr ZoaDetour(IntPtr songData, IntPtr chartInfo, byte large, IntPtr methodInfo)
