@@ -16,12 +16,15 @@ namespace InFalsusChartLoader
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Twenty detours, installed by ten functions. Eight of them exist because a custom song
+    /// Twenty-one detours, installed by eleven functions. Eight of them exist because a custom song
     /// needs the game to accept something it has no path for — a name it will look up, a byte range
     /// it will read, a picture it cannot reach. Each of those answers, and each is on a hot path, so
     /// each stays thin. One more answers for this mod's pack at the single accessor every read of a
-    /// pack's row of visuals goes through, giving it the In Falsus pack's row. Two more answer
-    /// nothing: they count and report, because whether the game took each step cannot be read off
+    /// pack's row of visuals goes through, giving it the In Falsus pack's row. One answers for the
+    /// custom songs' difficulties at the game's own state query for one song and one difficulty:
+    /// every difficulty of a custom song is open, and one the `if` file left chartless is the game's
+    /// own "this song has no chart here" — see `DifficultyDetour`, in the song-select's own file.
+    /// Two more answer nothing: they count and report, because whether the game took each step cannot be read off
     /// the decompilation with confidence and one number per step settles it. Two do neither — each
     /// changes what the game does around a call it is making, so that a difficulty change reaches
     /// the pictures: one widens the song-select's own reload to include a difficulty change, the
@@ -213,6 +216,7 @@ namespace InFalsusChartLoader
             Count(InstallAudioLoad());
             Count(InstallJacket());
             Count(InstallSongSelect());
+            Count(InstallDifficultyState());
             Count(InstallPackVisual());
             Count(InstallCustomResults());
             Count(InstallPlayGate());
@@ -232,6 +236,7 @@ namespace InFalsusChartLoader
             DetachPlayGate();
             DetachCustomResults();
             DetachPackVisual();
+            DetachDifficultyState();
             DetachSongSelect();
             DetachJacket();
             DetachAudioLoad();
@@ -293,6 +298,7 @@ namespace InFalsusChartLoader
             MusicPause,
             MusicResume,
             SongSelectApply,
+            DifficultyState,
             PackVisual,
             PackRow,
             ResultRead,
@@ -350,6 +356,7 @@ namespace InFalsusChartLoader
             Hook.MusicPause => "_Dg._hiA",
             Hook.MusicResume => "_Dg._KiA",
             Hook.SongSelectApply => "SongSelectScene._MN",
+            Hook.DifficultyState => "_NH._UoA",
             Hook.PackVisual => "PackVisualMemberLarge._vc",
             Hook.PackRow => "the pack row accessor (SongSelectPackAssets[])",
             Hook.ResultRead => "GameResultsV4.TryGetResult(song)",

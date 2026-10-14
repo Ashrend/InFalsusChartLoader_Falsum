@@ -12,8 +12,15 @@ namespace InFalsusChartLoader
     /// <remarks>
     /// The four difficulties are positional, matching the game's own difficulty slots:
     /// index 0 = Minimal, 1 = Evolved, 2 = Ultimate, 3 = Forbidden. That is why <c>chart</c>,
-    /// <c>charter</c> and <c>lv</c> must all be exactly four long — a folder cannot describe three
-    /// difficulties, and a gap in the middle has nowhere to be written.
+    /// <c>charter</c> and <c>lv</c> are statements about four difficulties each — written as four
+    /// entries, or as one, which is the last of the four with the rest left null.
+    ///
+    /// <para>
+    /// The three line up slot for slot: a difficulty either has a chart, a designer and a rating, or
+    /// has none of the three. The one exception is a difficulty with no chart, where a designer and a
+    /// rating may stand on their own — an author may know who is writing a chart, and how hard it is,
+    /// before the chart exists.
+    /// </para>
     /// </remarks>
     internal sealed class ChartInfo
     {
@@ -44,6 +51,11 @@ namespace InFalsusChartLoader
         /// `charter` do. Per-difficulty values are written where per-difficulty values go — the
         /// `SongChartInfo.DisplayJacketDesigner` of each record — and the one string the game can
         /// show is kept in step with the difficulty the game is applying (see `SongCatalog`).
+        ///
+        /// A difficulty may also be left out on its own, by writing `null` for it: that stores an
+        /// empty name for that difficulty, so the element is hidden there while the others still show
+        /// theirs. This is the one per-difficulty key that is not tied to whether the difficulty has a
+        /// chart — an illustrator is optional everywhere, so a difficulty with a chart may name none.
         /// </summary>
         internal string[] Illustrators;
 
@@ -63,6 +75,8 @@ namespace InFalsusChartLoader
         /// <summary>
         /// Absolute paths of the four in-play backgrounds, in difficulty order — or null when the
         /// `if` file names none, which is the ordinary case and means "the game's own background".
+        /// An <b>entry</b> may be null as well, for the same statement about one difficulty instead
+        /// of all four: that difficulty keeps the game's own background while the others wear theirs.
         ///
         /// A background is a still or a clip: `.png` is decoded into a material the same way a jacket
         /// is, and `.mp4` is played into a render texture the material shows (see
@@ -101,11 +115,32 @@ namespace InFalsusChartLoader
         /// </summary>
         internal string[] ChartNames;
 
-        /// <summary>Chart designer per difficulty, as the `if` file's <c>charter</c> lists them.</summary>
+        /// <summary>
+        /// Whether a difficulty has no chart at all, in difficulty order — the `if` file's `null`.
+        ///
+        /// A null does not name a lock and does not name a file: it says this song has no chart for
+        /// that difficulty, which is the answer the game itself gives for a song that lacks one. No
+        /// file is read or served for such a slot — its <see cref="ChartPaths"/> and
+        /// <see cref="ChartNames"/> entries are null and the folder need not hold anything — and the
+        /// difficulty is answered as "no chart" wherever the game asks, which is what keeps it from
+        /// being offered without ever being called locked.
+        /// </summary>
+        internal bool[] NoChart;
+
+        /// <summary>
+        /// Chart designer per difficulty, as the `if` file's <c>charter</c> lists them — null for a
+        /// difficulty the file left out, which it may do only where it names no chart there.
+        /// </summary>
         internal string[] Charters;
 
-        /// <summary>Difficulty rating per difficulty, as the game's own ratings are: small integers.</summary>
-        internal int[] Level;
+        /// <summary>
+        /// Difficulty rating per difficulty, as the game's own ratings are: small integers — or null
+        /// for a difficulty the file left out, which it may do only where it names no chart there.
+        ///
+        /// A rating of zero is not a way to say "none": `lv` refuses it, as it refuses every value
+        /// below one. Null is the only spelling the absence has.
+        /// </summary>
+        internal int?[] Level;
 
         /// <summary>
         /// The folder's own name. It is a label for the folder and nothing else: not a name for the

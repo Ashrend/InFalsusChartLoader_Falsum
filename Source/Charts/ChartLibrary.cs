@@ -148,11 +148,23 @@ namespace InFalsusChartLoader
                 }
 
                 Diagnostics.Info($"chart folder '{name}': '{info.Name}' by {info.Composer}, " +
-                                 $"{info.Level[0]}/{info.Level[1]}/{info.Level[2]}/{info.Level[3]}");
+                                 $"{Levels(info)}");
                 imported.Add(info);
             }
 
             return imported;
+        }
+
+        /// <summary>
+        /// The four difficulty ratings, in difficulty order, with <c>-</c> for a difficulty the `if`
+        /// file left out — the shape of the line an author reads to see what their folder was taken
+        /// for, so a difficulty that named no chart should read as absent rather than as a zero.
+        /// </summary>
+        private static string Levels(ChartInfo info)
+        {
+            var text = new string[ChartInfo.Difficulties];
+            for (int d = 0; d < text.Length; d++) text[d] = info.Level[d]?.ToString() ?? "-";
+            return string.Join("/", text);
         }
     }
 }

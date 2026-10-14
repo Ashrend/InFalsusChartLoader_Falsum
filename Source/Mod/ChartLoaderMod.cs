@@ -280,6 +280,11 @@ namespace InFalsusChartLoader
             byte[] scratch = new byte[32];
             for (int d = 0; d < ChartInfo.Difficulties; d++)
             {
+                // A difficulty with no chart has nothing to read and nothing to decode. It is not an
+                // omission: the song says it has no chart there, the game is told so wherever it asks
+                // about the difficulty, and no file is ever served for it.
+                if (info.NoChart[d]) continue;
+
                 string path = info.ChartPaths[d];
 
                 // What the chart was encoded under, which is what it can be decoded under. It is

@@ -73,8 +73,8 @@ namespace InFalsusChartLoader
             // if the two disagree at registration, "song[N] base=" in the after-block says so.
             line($"kept '{Path(info)}' as '{info.BaseName}', audio index {audioIndex} ({audioBytes} bytes), " +
                  $"jackets built {jacketCount}");
-            line($"  name='{info.Name}' composer='{info.Composer}' illust={Names(info.Illustrators)}");
-            line($"  levels={string.Join("/", info.Level)} charters={string.Join("/", info.Charters)}");
+            line($"  name='{info.Name}' composer='{info.Composer}' illust={Slots(info.Illustrators)}");
+            line($"  levels={Slots(info.Level)} charters={Slots(info.Charters)}");
             line($"  preview={info.PreviewStart}..{info.PreviewEnd}s");
             line($"  audio={System.IO.Path.GetFileName(info.SongPath)} jackets={Jackets(info)} " +
                  $"background={Backgrounds(info)}");
@@ -98,20 +98,45 @@ namespace InFalsusChartLoader
         /// "the game's own background" and "a background that failed to build" has to be readable
         /// from the import block, because the two look the same on screen.
         /// </summary>
+        /// <summary>
+        /// The four backgrounds by file name, in difficulty order, with <c>-</c> where the `if` file
+        /// names none for that difficulty — or <c>(none; the game's own)</c> when it names none at all.
+        /// </summary>
         private static string Backgrounds(ChartInfo info)
         {
             if (info.BackgroundPaths == null) return "(none; the game's own)";
 
-            var names = new List<string>(ChartInfo.Difficulties);
-            foreach (string path in info.BackgroundPaths) names.Add(System.IO.Path.GetFileName(path));
-            return string.Join(", ", names);
+            var names = new string[ChartInfo.Difficulties];
+            for (int d = 0; d < names.Length; d++)
+            {
+                string path = info.BackgroundPaths[d];
+                names[d] = path == null ? "-" : System.IO.Path.GetFileName(path);
+            }
+            return string.Join("/", names);
         }
 
-        /// <summary>A list of names, or "(none)" — for the optional fields, where null is an answer.</summary>
-        private static string Names(string[] values)
+        /// <summary>
+        /// One per-difficulty key's four values, in difficulty order, with <c>-</c> for a difficulty
+        /// the `if` file left out — or <c>(none)</c> when it left the key out entirely.
+        /// </summary>
+        private static string Slots(string[] values)
         {
             if (values == null) return "(none)";
-            return string.Join(", ", values);
+
+            var text = new string[values.Length];
+            for (int i = 0; i < values.Length; i++)
+                text[i] = string.IsNullOrEmpty(values[i]) ? "-" : values[i];
+            return string.Join("/", text);
+        }
+
+        /// <summary>As above, for the difficulty ratings.</summary>
+        private static string Slots(int?[] values)
+        {
+            if (values == null) return "(none)";
+
+            var text = new string[values.Length];
+            for (int i = 0; i < values.Length; i++) text[i] = values[i]?.ToString() ?? "-";
+            return string.Join("/", text);
         }
 
         // ---------------------------------------------------------------- three: the tables
@@ -164,6 +189,10 @@ namespace InFalsusChartLoader
             $"zoa={Hooks.ZoaCalls}/{Hooks.ZoaArmed} lia={Hooks.LiaCalls}/{Hooks.LiaClaimed} " +
             $"uma={Hooks.UmaCalls}/{Hooks.UmaArmed} " +
             $"gate={Hooks.PlayGateCalls}/{Hooks.PlayGateYes} " +
+            // Difficulty states asked of `_NH._UoA`, and how many were about this mod's songs. The
+            // second number says the takeover is in force; it moves whenever the song select repaints
+            // with a custom song selected, whatever the save's own story progress is.
+            $"state={Hooks.DifficultyAsked}/{Hooks.DifficultyOurs} " +
             // The selection the game last applied, and how often a difficulty change was given the
             // reload the game would not have done by itself. `askedNoPicture` above is the other
             // half: it counts the times a jacket was asked for and the difficulty could not be told,

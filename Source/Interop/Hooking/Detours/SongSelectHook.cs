@@ -147,5 +147,125 @@ namespace InFalsusChartLoader
 
             return applied;
         }
+
+        /// <summary>The namespace `_NH` — the player's save — is resolved in: the scenes' parent.</summary>
+        private const string SaveNamespace = "ifapp.Game";
+
+        /// <summary>
+        /// `_K._NH._UoA(in SongInfo, ChartDifficultyFlag, byte flags) -> byte` — the state of one
+        /// difficulty of one song.
+        ///
+        /// <para>
+        /// It is the game's one answer to "what is this difficulty": <b>0</b> when the song has no
+        /// chart for it, <b>1</b> when it is locked — the story it belongs to has not been reached,
+        /// the pack it sits in is unowned DLC, or its rating is above what the save has unlocked —
+        /// and <b>2</b> when it is open. Every consumer asks here: the play gate (`_sN`, which starts
+        /// a song only on a 2), the difficulty buttons and the refresh that redraws them, the song
+        /// cards, the results screen, and the panel that explains an unlock.
+        /// </para>
+        /// <para>
+        /// For a song this mod imported the answer is this mod's own. <b>Every difficulty is open</b>:
+        /// a chart that came off the disk is not the save's to unlock, and leaving it to the game's
+        /// gates is what made the upper difficulties of a custom song follow a fresh save's story
+        /// progress. A difficulty the `if` file left chartless answers <b>0</b> — the game's own "this
+        /// song has no chart here", the same thing it says about a shipped song that lacks one.
+        /// Nothing is ever answered 1: that answer is the one the game dresses up with its unlock
+        /// panel and its progress, and a chart that is not there is not a lock to be explained.
+        /// </para>
+        /// <para>
+        /// The song is read the way the function being stood in front of reads it: a record's first
+        /// field is its `SongId` — that is what `_UoA` indexes `allSongInfo` with, checking the
+        /// element's own id against the index before it uses it. Everything else is passed through
+        /// untouched.
+        /// </para>
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate byte DifficultyStateFn(IntPtr save, IntPtr access, IntPtr songInfo,
+                                                byte difficulty, byte flags, IntPtr methodInfo);
+
+        private static NativeHook<DifficultyStateFn> _state;
+        private static DifficultyStateFn _stateTramp;
+
+        /// <summary>Difficulty questions asked, and how many of them were about this mod's songs.</summary>
+        internal static long DifficultyAsked, DifficultyOurs;
+
+        private static bool InstallDifficultyState()
+        {
+            // By runtime walk, like the two other `_NH` methods this mod reaches: the walk answers for
+            // this class where the generated store does not.
+            IntPtr target = MethodResolver.ByRuntime("_NH", "_UoA", SceneImage, SaveNamespace);
+            if (target == IntPtr.Zero)
+            {
+                Diagnostics.Error("_NH._UoA: no method by that name in this build; a custom song's " +
+                                  "difficulties will follow the game's own locks, and a fresh save may " +
+                                  "leave them locked");
+                return false;
+            }
+
+            byte[] prologue = Prologue(target);
+            _state = new NativeHook<DifficultyStateFn>
+            {
+                Target = target,
+                Detour = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, IntPtr, byte, byte, IntPtr, byte>)&DifficultyDetour,
+            };
+            _state.Attach();
+            _stateTramp = _state.Trampoline;
+            Diagnostics.Info("_NH._UoA hooked");
+            return Landed(Hook.DifficultyState, target, prologue);
+        }
+
+        private static void DetachDifficultyState()
+        {
+            _state?.Detach();
+            _state = null;
+            _stateTramp = null;
+        }
+
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+        private static byte DifficultyDetour(IntPtr save, IntPtr access, IntPtr songInfo, byte difficulty,
+                                             byte flags, IntPtr methodInfo)
+        {
+            DifficultyAsked++;
+
+            if (!Faulted)
+            {
+                try
+                {
+                    if (Ours(songInfo, difficulty, out ChartInfo info, out int index))
+                    {
+                        DifficultyOurs++;
+
+                        // A chart that is not there, or a difficulty that is open. See the summary.
+                        return info.NoChart[index] ? (byte)0 : (byte)2;
+                    }
+                }
+                catch (Exception e)
+                {
+                    Fault(Hook.DifficultyState, e);
+                }
+            }
+
+            return _stateTramp(save, access, songInfo, difficulty, flags, methodInfo);
+        }
+
+        /// <summary>
+        /// Whether the song asked about is one of this mod's, and which difficulty the flag names.
+        ///
+        /// The id is read at the offset the field resolver answers for `SongInfo.Id`. The record is a
+        /// value type, so that offset is within the record itself — the copies the game hands this
+        /// call and the heap records alike — and the same two reads every other "is this ours" test in
+        /// this mod makes are the ones here.
+        /// </summary>
+        private static bool Ours(IntPtr songInfo, byte difficulty, out ChartInfo info, out int index)
+        {
+            info = null;
+            index = -1;
+
+            if (!Offsets.Ready || !Memory.LooksLikeObject(songInfo)) return false;
+            if (!SongCatalog.ById.TryGetValue(Memory.U16(songInfo + Offsets.Song.Id), out info)) return false;
+
+            index = SongCatalog.DifficultyIndexOf(difficulty);
+            return index >= 0;
+        }
     }
 }

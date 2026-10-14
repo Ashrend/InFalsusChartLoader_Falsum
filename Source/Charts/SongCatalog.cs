@@ -244,6 +244,14 @@ namespace InFalsusChartLoader
         /// </summary>
         private static readonly byte[] DifficultyFlags = { 1, 2, 4, 8 };
 
+        /// <summary>The index <c>chart[0..3]</c> a difficulty flag names, or -1 for anything else.</summary>
+        internal static int DifficultyIndexOf(byte flag)
+        {
+            for (int i = 0; i < DifficultyFlags.Length; i++)
+                if (DifficultyFlags[i] == flag) return i;
+            return -1;
+        }
+
         private static int _songDataField = int.MinValue;
         private static int _packDataField = int.MinValue;
         private static bool _unusable;
@@ -582,9 +590,7 @@ namespace InFalsusChartLoader
         /// </summary>
         internal static void ShowIllustrator(ushort songId, byte difficultyFlag)
         {
-            int difficulty = -1;
-            for (int i = 0; i < DifficultyFlags.Length; i++)
-                if (DifficultyFlags[i] == difficultyFlag) { difficulty = i; break; }
+            int difficulty = DifficultyIndexOf(difficultyFlag);
 
             if (difficulty < 0) return;
             if (!ById.TryGetValue(songId, out ChartInfo info)) return;
@@ -683,12 +689,33 @@ namespace InFalsusChartLoader
                 IntPtr slot = array + Offsets.Runtime.ArrayDataOffset + d * ChartInfoSize;
                 Buffer.MemoryCopy((void*)source, (void*)slot, ChartInfoSize, ChartInfoSize);
 
-                // The `if` file's own file name for this difficulty. The game carries this string
-                // into the chart load, so it has to be what the folder actually holds.
-                Memory.WritePtr(slot + ChartInfoId, Str(Path.GetFileName(info.ChartPaths[d])));
-                Memory.WriteU8(slot + ChartInfoAvailable, 1);
-                Memory.WriteU8(slot + ChartInfoDifficulty, DifficultyFlags[d]);
-                Memory.WritePtr(slot + ChartInfoDesigner, Str(info.Charters[d]));
+                if (info.NoChart[d])
+                {
+                    // A difficulty this song has no chart for. The record says the same thing the
+                    // mod's answer does — `Available` is the first thing the game's own state query
+                    // reads — and the id is a string of this song's own, because the game's indexes
+                    // are keyed by chart id and three chartless slots sharing one string would be
+                    // three entries under one key. Nothing is ever loaded through it: the difficulty
+                    // is never offered, so it is never asked for.
+                    Memory.WritePtr(slot + ChartInfoId, Str(info.BaseName + "_" + (d + 1)));
+                    Memory.WriteU8(slot + ChartInfoAvailable, 0);
+                    Memory.WriteU8(slot + ChartInfoDifficulty, DifficultyFlags[d]);
+                }
+                else
+                {
+                    // The `if` file's own file name for this difficulty. The game carries this string
+                    // into the chart load, so it has to be what the folder actually holds.
+                    Memory.WritePtr(slot + ChartInfoId, Str(Path.GetFileName(info.ChartPaths[d])));
+                    Memory.WriteU8(slot + ChartInfoAvailable, 1);
+                    Memory.WriteU8(slot + ChartInfoDifficulty, DifficultyFlags[d]);
+                }
+
+                // Written for a chartless difficulty too: the record is copied from a shipped song's,
+                // and leaving this one alone would leave that song's designer in it. Nothing shows it
+                // — a chartless difficulty is never selected — but an inherited name is still a name
+                // this song did not choose. A difficulty the author left out has no designer of its
+                // own, so there it is an empty name rather than that song's.
+                Memory.WritePtr(slot + ChartInfoDesigner, Str(info.Charters[d] ?? string.Empty));
 
                 // `illust` is the jacket artist. Written for every difficulty, matching how the
                 // shipped charts carry one value per difficulty there (`jacketDesigner1`..`4`) --
@@ -699,11 +726,17 @@ namespace InFalsusChartLoader
                 // more; it is not what puts a name on screen, and it is empty rather than inherited
                 // when the author named no illustrator.
                 Memory.WritePtr(slot + ChartInfoJacketDesigner, Str(IllustratorOf(info, d)));
-                Memory.WriteI32(slot + ChartInfoRating, info.Level[d]);
 
-                // The heading this difficulty sorts under. See SectionBoundary.
+                // The rating and the heading it sorts under, written for a chartless difficulty for
+                // the same reason as the designer above. A difficulty the author left out has neither,
+                // and both are then empty rather than inherited. Neither is ever read for a difficulty
+                // with no chart: `Available` above is the first thing the game's own state query
+                // tests, and it answers before anything else in the record is looked at.
+                int? level = info.Level[d];
+                Memory.WriteI32(slot + ChartInfoRating, level ?? 0);
                 Memory.WritePtr(slot + ChartInfoSection,
-                                Str(info.Level[d] <= SectionBoundary ? "1" : "2"));
+                                Str(level is int rated ? (rated <= SectionBoundary ? "1" : "2")
+                                                       : string.Empty));
             }
 
             return array;

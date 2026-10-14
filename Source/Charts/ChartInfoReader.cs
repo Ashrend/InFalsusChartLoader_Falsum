@@ -169,9 +169,22 @@ namespace InFalsusChartLoader
 
             if (!Preview(root, out built.PreviewStart, out built.PreviewEnd, out reason)) return false;
 
-            if (!Texts(root, "charter", out built.Charters, out reason)) return false;
-            if (!Levels(root, "lv", out built.Level, out reason)) return false;
-            if (!ChartFiles(root, folder, out built.ChartPaths, out built.ChartNames, out reason)) return false;
+            // `chart`, `charter` and `lv` are one family and they line up slot for slot. A single
+            // value is the last difficulty's — `[null, null, null, value]` — so which of the two ways
+            // an author wrote one says nothing about what it means. See `Slots` and `Aligned`.
+            if (!DifficultyValue(root, "chart", out JToken charts, out reason)) return false;
+            if (!DifficultyValue(root, "charter", out JToken charters, out reason)) return false;
+            if (!DifficultyValue(root, "lv", out JToken levels, out reason)) return false;
+
+            JToken[] chartSlots = Slots(charts);
+            JToken[] charterSlots = Slots(charters);
+            JToken[] levelSlots = Slots(levels);
+            if (!Aligned(chartSlots, charterSlots, levelSlots, out reason)) return false;
+
+            if (!Texts(charterSlots, "charter", out built.Charters, out reason)) return false;
+            if (!Levels(levelSlots, "lv", out built.Level, out reason)) return false;
+            if (!ChartFiles(chartSlots, folder, out built.ChartPaths, out built.ChartNames, out built.NoChart,
+                            out reason)) return false;
 
             info = built;
             return true;
@@ -279,12 +292,14 @@ namespace InFalsusChartLoader
         /// is the general case, and lets a difficulty look unlike its neighbours.
         /// </summary>
         private static bool Jackets(JObject root, string folder, out string[] paths, out string reason) =>
-            OneOrFour(root, folder, "jacket", ImageExtensions, out paths, out reason);
+            OneOrFour(root, folder, "jacket", ImageExtensions, false, out paths, out reason);
 
         /// <summary>
         /// The in-play backgrounds: one file per difficulty, under the key <c>background</c>, each a
         /// still or a clip. Optional — the only field whose absence is an answer rather than a
-        /// rejection, because "no background of my own" is an ordinary song.
+        /// rejection, because "no background of my own" is an ordinary song. So is one difficulty's
+        /// absence: <c>null</c> in an entry keeps the game's own background for that difficulty while
+        /// the others wear theirs.
         /// </summary>
         private static bool Backgrounds(JObject root, string folder, out string[] paths, out string reason)
         {
@@ -294,15 +309,18 @@ namespace InFalsusChartLoader
             JToken token = root["background"];
             if (token == null || token.Type == JTokenType.Null) return true;   // absent: the game's own
 
-            return OneOrFour(root, folder, "background", BackgroundExtensions, out paths, out reason);
+            return OneOrFour(root, folder, "background", BackgroundExtensions, true, out paths, out reason);
         }
 
         /// <summary>
         /// A field that is one name or four names, each naming a file in the folder. Shared by the
-        /// jackets and the backgrounds, which differ only in key and in what a name may end with.
+        /// jackets and the backgrounds, which differ in three things: their key, what a name may end
+        /// with, and whether an entry may be left out — <paramref name="entriesMayBeNull"/>, true for
+        /// the backgrounds, where naming no file for one difficulty is the same statement the key's
+        /// own absence makes for all four.
         /// </summary>
         private static bool OneOrFour(JObject root, string folder, string key, string[] allowed,
-                                      out string[] paths, out string reason)
+                                      bool entriesMayBeNull, out string[] paths, out string reason)
         {
             paths = null;
             reason = null;
@@ -347,6 +365,8 @@ namespace InFalsusChartLoader
             for (int i = 0; i < result.Length; i++)
             {
                 JToken item = array[i];
+                if (item.Type == JTokenType.Null && entriesMayBeNull) continue;   // this one: none
+
                 if (item.Type != JTokenType.String || string.IsNullOrWhiteSpace(item.Value<string>()))
                 {
 #if DEBUG
@@ -364,11 +384,16 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>
-        /// The illustrators: one name, four names, or nothing at all.
+        /// The illustrators: one name, four names, or nothing at all — and any one difficulty may be
+        /// left out on its own, by writing `null` in its place.
         ///
         /// Nothing at all is not a rejection — see <see cref="ChartInfo.Illustrators"/> — so the only
         /// ways to fail are the ones a written value can fail in: a wrong type, a wrong length, or an
-        /// entry that is not a name.
+        /// entry that is neither a name nor null. This is the one key that is not part of the
+        /// `chart`/`charter`/`lv` family: an illustrator is optional everywhere, so a null here says
+        /// nothing about whether the difficulty has a chart, and a difficulty with a chart may leave
+        /// its illustrator out. An entry left out is stored as an empty name, which is what hides the
+        /// element; see <see cref="ChartInfo.Illustrators"/> for why not just leaving it unwritten.
         /// </summary>
         private static bool Illustrators(JObject root, out string[] names, out string reason)
         {
@@ -415,6 +440,12 @@ namespace InFalsusChartLoader
             for (int i = 0; i < result.Length; i++)
             {
                 JToken item = array[i];
+                if (item.Type == JTokenType.Null)
+                {
+                    result[i] = string.Empty;   // this difficulty shows none
+                    continue;
+                }
+
                 if (item.Type != JTokenType.String || string.IsNullOrWhiteSpace(item.Value<string>()))
                 {
 #if DEBUG
@@ -507,14 +538,22 @@ namespace InFalsusChartLoader
             return false;
         }
 
-        /// <summary>One of the three arrays that must be exactly <see cref="ChartInfo.Difficulties"/> long.</summary>
-        private static bool RequiredArray(JObject root, string key, out JArray array, out string reason)
+        /// <summary>
+        /// One of the three per-difficulty keys, as its token: a four-element array, or one value.
+        ///
+        /// Either way it is a statement about <b>four</b> difficulties — see <see cref="Slots"/>, which
+        /// turns the one-value form into the four-element one it is short for. All this settles is
+        /// that the key is there, and that an array of it is neither short nor long; what the values
+        /// say — including a bare `null`, which is the one-value form of "none" — is
+        /// <see cref="Aligned"/>'s question and not this one's.
+        /// </summary>
+        private static bool DifficultyValue(JObject root, string key, out JToken token, out string reason)
         {
-            array = null;
+            token = null;
             reason = null;
 
-            JToken token = root[key];
-            if (token == null || token.Type == JTokenType.Null)
+            JToken found = root[key];
+            if (found == null)
             {
 #if DEBUG
                 reason = $"\"{key}\" is missing";
@@ -522,37 +561,93 @@ namespace InFalsusChartLoader
                 return false;
             }
 
-            if (token.Type != JTokenType.Array)
+            if (found.Type == JTokenType.Array && ((JArray)found).Count != ChartInfo.Difficulties)
             {
 #if DEBUG
-                reason = $"\"{key}\" is not an array";
+                reason = $"\"{key}\" has {((JArray)found).Count} entries, not {ChartInfo.Difficulties} "
+                       + "and not one";
 #endif
                 return false;
             }
 
-            array = (JArray)token;
-            if (array.Count != ChartInfo.Difficulties)
+            token = found;
+            return true;
+        }
+
+        /// <summary>
+        /// One of those tokens as its four difficulties: the array as written, or a single value
+        /// written out as <c>[null, null, null, value]</c>.
+        ///
+        /// The single value states the <b>last</b> difficulty and no other, and that is the rule for
+        /// all three keys — one value in `chart` is one chart, for Forbidden, so one value in
+        /// `charter` is that difficulty's designer and one value in `lv` is its rating. It used to be
+        /// read two ways, a single `charter` or `lv` meaning every difficulty's; that made the three
+        /// keys disagree about what the same spelling says, and it put a designer on difficulties
+        /// whose `chart` entry said there was no chart there.
+        /// </summary>
+        private static JToken[] Slots(JToken token)
+        {
+            var slots = new JToken[ChartInfo.Difficulties];
+            if (token.Type != JTokenType.Array)
             {
+                for (int i = 0; i < slots.Length - 1; i++) slots[i] = JValue.CreateNull();
+                slots[slots.Length - 1] = token;
+                return slots;
+            }
+
+            for (int i = 0; i < slots.Length; i++) slots[i] = ((JArray)token)[i];
+            return slots;
+        }
+
+        /// <summary>
+        /// Whether the three keys say something consistent about each difficulty.
+        ///
+        /// A difficulty is either described — a chart to play, a designer and a rating to file with it
+        /// — or it is not described at all, which is what three nulls say. The one exception is a
+        /// difficulty with no chart: there, a designer and a rating are allowed to stand on their own,
+        /// because an author who is still writing a chart may well know who is writing it and how hard
+        /// it is. The other direction has no exception: a chart with no designer or no rating is a
+        /// record the game would carry with a hole in it, and that is a file to refuse rather than to
+        /// write half of.
+        /// </summary>
+        private static bool Aligned(JToken[] charts, JToken[] charters, JToken[] levels, out string reason)
+        {
+            reason = null;
+
+            for (int d = 0; d < ChartInfo.Difficulties; d++)
+            {
+                if (charts[d].Type == JTokenType.Null) continue;   // no chart: the two may stand alone
+
+                if (charters[d].Type == JTokenType.Null || levels[d].Type == JTokenType.Null)
+                {
 #if DEBUG
-                reason = $"\"{key}\" has {array.Count} entries, not {ChartInfo.Difficulties}";
+                    reason = $"difficulty {d} has a chart but no "
+                           + (charters[d].Type == JTokenType.Null ? "\"charter\"" : "\"lv\"");
 #endif
-                return false;
+                    return false;
+                }
             }
 
             return true;
         }
 
-        /// <summary>The four chart designers.</summary>
-        private static bool Texts(JObject root, string key, out string[] values, out string reason)
+        /// <summary>
+        /// The four chart designers, in difficulty order — a null where the `if` file gave none.
+        ///
+        /// A difficulty with no chart may leave its designer out, which is the only place a null can
+        /// stand here: <see cref="Aligned"/> has already refused a chart that names no designer.
+        /// </summary>
+        private static bool Texts(JToken[] slots, string key, out string[] values, out string reason)
         {
             values = null;
             reason = null;
-            if (!RequiredArray(root, key, out JArray array, out reason)) return false;
 
             var result = new string[ChartInfo.Difficulties];
             for (int i = 0; i < result.Length; i++)
             {
-                JToken item = array[i];
+                JToken item = slots[i];
+                if (item.Type == JTokenType.Null) continue;   // no chart there, so no designer to name
+
                 if (item.Type != JTokenType.String || string.IsNullOrWhiteSpace(item.Value<string>()))
                 {
 #if DEBUG
@@ -567,17 +662,24 @@ namespace InFalsusChartLoader
             return true;
         }
 
-        /// <summary>The four difficulty ratings. The game stores these as small integers.</summary>
-        private static bool Levels(JObject root, string key, out int[] values, out string reason)
+        /// <summary>
+        /// The four difficulty ratings, in difficulty order — a null where the `if` file gave none.
+        ///
+        /// The game stores these as small integers, and a rating of zero or less is not one: null is
+        /// how "no rating" is written, and it is available only where there is no chart to rate
+        /// (<see cref="Aligned"/>).
+        /// </summary>
+        private static bool Levels(JToken[] slots, string key, out int?[] values, out string reason)
         {
             values = null;
             reason = null;
-            if (!RequiredArray(root, key, out JArray array, out reason)) return false;
 
-            var result = new int[ChartInfo.Difficulties];
+            var result = new int?[ChartInfo.Difficulties];
             for (int i = 0; i < result.Length; i++)
             {
-                JToken item = array[i];
+                JToken item = slots[i];
+                if (item.Type == JTokenType.Null) continue;   // no chart there, so nothing to rate
+
                 if (item.Type != JTokenType.Integer)
                 {
 #if DEBUG
@@ -602,21 +704,43 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>
-        /// The four chart files. Each has to be in the folder, and each has to be a chart the game's
-        /// own decoder will accept — that second half is checked in <see cref="ChartLoaderMod"/>,
-        /// which is where the decoder is reachable.
+        /// The chart files, in difficulty order, with `null` for a difficulty that has none.
+        ///
+        /// Each named file has to be in the folder, and each has to be a chart the game's own decoder
+        /// will accept — that second half is checked in <see cref="ChartLoaderMod"/>, which is where
+        /// the decoder is reachable. A chartless difficulty names no file at all: nothing is read for
+        /// it, nothing is served for it, and the difficulty is answered as "no chart" wherever the
+        /// game asks about it.
         /// </summary>
-        private static bool ChartFiles(JObject root, string folder, out string[] paths,
-                                       out string[] chartNames, out string reason)
+        private static bool ChartFiles(JToken[] slots, string folder, out string[] paths,
+                                       out string[] chartNames, out bool[] noChart, out string reason)
         {
             paths = null;
             chartNames = null;
-            if (!Texts(root, "chart", out string[] names, out reason)) return false;
+            noChart = null;
+            reason = null;
 
             var result = new string[ChartInfo.Difficulties];
-            for (int i = 0; i < result.Length; i++)
+            var names = new string[ChartInfo.Difficulties];
+            var absent = new bool[ChartInfo.Difficulties];
+
+            for (int i = 0; i < ChartInfo.Difficulties; i++)
             {
-                string name = names[i];
+                JToken item = slots[i];
+                if (item.Type == JTokenType.Null)
+                {
+                    absent[i] = true;
+                    continue;
+                }
+                if (item.Type != JTokenType.String || string.IsNullOrWhiteSpace(item.Value<string>()))
+                {
+#if DEBUG
+                    reason = $"\"chart\"[{i}] is not a name";
+#endif
+                    return false;
+                }
+
+                string name = item.Value<string>();
                 if (Path.GetFileName(name) != name)
                 {
 #if DEBUG
@@ -633,11 +757,14 @@ namespace InFalsusChartLoader
 #endif
                     return false;
                 }
+
                 result[i] = path;
+                names[i] = name;
             }
 
             paths = result;
             chartNames = names;
+            noChart = absent;
             return true;
         }
     }
