@@ -100,10 +100,9 @@ namespace InFalsusChartLoader
         ///
         /// The value as the game's own enum defines it (`R/NN/dump.cs`, `GameResultsV4.UpdateResult`:
         /// `Updated = 0, New = 1, NoChange = 2`). The answer is acted on, so a refusal must not look
-        /// like a new record: measured at the one call site (`ResultsScene.Start` +0x134E), the
-        /// answer is kept and tested for `New` alone, and the caller's own `existingScore` slot is
-        /// zeroed before the call (+0x377) — so a refusal that does not touch it leaves a zero
-        /// rather than a stray value.
+        /// like a new record: measured at the one call site (`ResultsScene.Start`), the answer is kept
+        /// and tested for `New` alone, and the caller's own `existingScore` slot is zeroed before the
+        /// call — so a refusal that does not touch it leaves a zero rather than a stray value.
         /// </summary>
         private const int NoChange = 2;
 

@@ -195,7 +195,17 @@ namespace InFalsusChartLoader
             IntPtr target = RowAccessor(ref candidates);
             if (target == IntPtr.Zero)
             {
-                Diagnostics.Info($"the pack row accessor: {candidates} candidate(s) matched");
+                if (candidates < 0)
+                {
+                    // The getter is the missing piece, and it is reached by name: that is a different
+                    // failure from "the helper it calls could not be told apart", so it says so.
+                    Diagnostics.Error("the game's pack row getter could not be found by name in this " +
+                                      "build; the custom pack will wear whatever this build puts in its row");
+                    return false;
+                }
+
+                Diagnostics.Info($"the pack row accessor: the getter's most-called function is called " +
+                                 $"{candidates} time(s); a row is {RowSize()} byte(s)");
                 Diagnostics.Error("the pack row accessor could not be located in this build; the custom " +
                                   "pack will wear whatever this build puts in its row");
                 return false;
@@ -280,41 +290,94 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>
-        /// Finds that accessor in the loaded game.
+        /// The helper the game's own row getter calls — asked of the game, not searched for by shape.
         ///
-        /// It has no name to resolve by: it is not a method the game declares but an IL2CPP
-        /// instantiation generated for this one array type, and it is not in the interop assemblies
-        /// either. What is unique about it is its shape — the bounds check against the array length,
-        /// then the multiply by the row size, 216 — so it is found by those bytes, and the search
-        /// refuses to answer unless exactly one place matches.
+        /// That helper has no name to resolve by: it is not a method the game declares — measured, its
+        /// address is in no method-pointer table and no name table carries it — but a body the compiler
+        /// emitted for this one array type, called from thirteen places. So it is reached through one of
+        /// its callers, and that caller <i>is</i> named: `PackSelectSceneAssets._WnA`, the game's own
+        /// "the row for this pack id" getter, the one method whose whole job is to copy a row out.
         ///
-        /// The bytes are the ones the disassembly shows, copied from the image rather than read off the
-        /// listing: the first version of this search was written from the listing and matched nothing,
-        /// because three encodings had been assumed rather than looked at — `cmp` is `3B` here and not
-        /// `39`, the branch is a near `0F 83` and not a short `73`, and the multiply's REX prefix is
-        /// `49` and not `4C`. Measured offline against this build: one match, at RVA 0xCF40.
+        /// It copies a row for the id it was handed and another for the fallback row it uses when that
+        /// id is out of range, so the helper is the function it calls <b>more than once</b>. That is the
+        /// whole of the search: walk the getter's first bytes, take every `call` — `E8` and a
+        /// displacement, which is x86 and not this game — and answer with the target called from two or
+        /// more sites, as long as exactly one target is called that often.
         ///
-        /// Where to look is asked of the module: the executable sections are read out of its own PE
-        /// headers, so no address and no section layout is written down here.
+        /// Nothing of the game's code is written down: an encoding is the architecture's, the window is
+        /// a bound this mod chooses, and where a call lands is read off the call. The row size that used
+        /// to be baked into a shape this search matched is not needed here at all — <see cref="RowSize"/>
+        /// survives only to say, in a log, what a row turned out to be.
+        ///
+        /// Zero when the getter cannot be resolved, when nothing inside the window is called twice, or
+        /// when more than one thing is; <paramref name="candidates"/> carries the count seen, and -1
+        /// means the getter itself was the missing piece.
         /// </summary>
         private static IntPtr RowAccessor(ref int candidates)
         {
-            // sub rsp, 28h | cmp r8d, [rcx+18h] | jae rel32
-            byte[] head = { 0x48, 0x83, 0xEC, 0x28, 0x44, 0x3B, 0x41, 0x18, 0x0F, 0x83 };
-            // imul rax, r8, 0D8h — right after the branch. `head` already carries the branch's two
-            // opcode bytes, so the four bytes of its displacement are all that is left to skip.
-            byte[] tail = { 0x49, 0x69, 0xC0, 0xD8, 0x00, 0x00, 0x00 };
-            const int BranchDisplacement = 4;
+            IntPtr getter = MethodResolver.ByName("PackSelectSceneAssets", "_WnA");
+            if (getter == IntPtr.Zero)
+            {
+                candidates = -1;
+                return IntPtr.Zero;
+            }
 
+            byte* code = (byte*)getter;
+            IntPtr best = IntPtr.Zero;
+            int bestCount = 0;
+            bool tied = false;
+
+            for (int at = 0; at + CallLength <= CallWindow; at++)
+            {
+                if (code[at] != 0xE8) continue;                                  // `call rel32`
+
+                IntPtr target = Target(code + at);
+                if (!Executable(target)) continue;
+
+                int count = 1;
+                for (int other = at + CallLength; other + CallLength <= CallWindow; other++)
+                    if (code[other] == 0xE8 && Target(code + other) == target)
+                        count++;
+
+                if (count > bestCount) { bestCount = count; best = target; tied = false; }
+                else if (count == bestCount) tied = true;
+            }
+
+            candidates = bestCount;
+            return bestCount > 1 && !tied ? best : IntPtr.Zero;
+        }
+
+        /// <summary>`call rel32` — one opcode byte and four of displacement.</summary>
+        private const int CallLength = 5;
+
+        /// <summary>
+        /// How far into the getter calls are looked for. A bound this mod chooses, not a measurement:
+        /// the getter is small — a bounds check and two copies — and a window that reached past it into
+        /// the next function could only add calls that are made once.
+        /// </summary>
+        private const int CallWindow = 96;
+
+        /// <summary>Where an `E8` at <paramref name="call"/> calls, read off the instruction.</summary>
+        private static IntPtr Target(byte* call)
+        {
+            return (IntPtr)((long)(call + CallLength) + *(int*)(call + 1));
+        }
+
+        /// <summary>
+        /// Whether an address is inside one of the module's executable sections — asked of the module's
+        /// own PE headers, so no address and no section layout is written down.
+        /// </summary>
+        private static bool Executable(IntPtr address)
+        {
             byte* image = (byte*)GameAssembly.Base;
-            if (image == null || *(ushort*)image != 0x5A4D) return IntPtr.Zero;      // "MZ"
+            if (image == null || *(ushort*)image != 0x5A4D) return false;        // "MZ"
 
             byte* pe = image + *(int*)(image + 0x3C);
-            if (*(uint*)pe != 0x00004550) return IntPtr.Zero;                       // "PE\0\0"
+            if (*(uint*)pe != 0x00004550) return false;                         // "PE\0\0"
 
             int sections = *(ushort*)(pe + 6);
             byte* section = pe + 24 + *(ushort*)(pe + 20);
-            IntPtr found = IntPtr.Zero;
+            long at = address.ToInt64();
 
             for (int s = 0; s < sections; s++, section += 40)
             {
@@ -322,29 +385,38 @@ namespace InFalsusChartLoader
                 if ((*(uint*)(section + 36) & 0x20000000) == 0) continue;
 
                 uint size = *(uint*)(section + 8);
-                uint address = *(uint*)(section + 12);
-                if (size == 0 || address == 0) continue;
+                uint start = *(uint*)(section + 12);
+                if (size == 0 || start == 0) continue;
 
-                byte* start = image + address;
-                byte* end = start + size;
-                for (byte* p = start; p + head.Length + BranchDisplacement + tail.Length <= end; p++)
-                {
-                    bool match = true;
-                    for (int i = 0; i < head.Length && match; i++) match = p[i] == head[i];
-                    if (!match) continue;
-
-                    byte* mul = p + head.Length + BranchDisplacement;
-                    for (int i = 0; i < tail.Length && match; i++) match = mul[i] == tail[i];
-                    if (!match) continue;
-
-                    candidates++;
-                    if (candidates > 1) return IntPtr.Zero;   // ambiguous — do not pick one
-                    found = (IntPtr)p;
-                }
+                long from = (long)(image + start);
+                if (at >= from && at < from + size) return true;
             }
 
-            return found;
+            return false;
         }
+
+        /// <summary>
+        /// One `SongSelectPackAssets` in bytes — asked of the game, never written down. See
+        /// <see cref="FieldResolver.ValueSize"/>, which is the same question this hook's own fields are
+        /// answered by: the array's element type, less the object header a boxed one carries.
+        /// Measured on this build: 216.
+        ///
+        /// Zero when it cannot be had, and the caller refuses on zero: a search built from a size that
+        /// is not this game's is a search for an address this game does not have. Not remembered on
+        /// failure — a class the index has not been asked for yet is not a class that does not exist.
+        /// </summary>
+        private static int RowSize()
+        {
+            if (_rowSize >= 0) return _rowSize;
+
+            int size = FieldResolver.ValueSize("SongSelectPackAssets");
+            if (size <= 0) return 0;
+
+            return _rowSize = size;
+        }
+
+        /// <summary>`RowSize`'s answer, -1 until it has been asked.</summary>
+        private static int _rowSize = -1;
 
         /// <summary>
         /// Which shipped row a new pack copies its look from: <b>the first one the game draws</b> — the

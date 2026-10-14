@@ -104,8 +104,8 @@ namespace InFalsusChartLoader
         /// </description></item>
         /// <item><description>
         /// <b>名字</b> —— 传的是**结构体副本**的地址（`SongInfoContainer` 把记录拷进局部变量
-        /// 再取地址，而 `SongChartInfo` 是 0x30 字节的 struct）。副本落在栈上，地址认不出来，
-        /// 但副本里唯一的引用字段 `Id`（+0x00）仍指着同一个字符串 —— 谱面的文件名。
+        /// 再取地址，而 `SongChartInfo` 是按值传的 struct）。副本落在栈上，地址认不出来，
+        /// 但副本里唯一的引用字段 `Id` 仍指着同一个字符串 —— 谱面的文件名。
         /// **重名时放弃**：两首歌用同一个文件名的话，这个名字说明不了是哪一首，宁可退回兜底
         /// 也不能把别人的曲绘贴上去。
         /// </description></item>

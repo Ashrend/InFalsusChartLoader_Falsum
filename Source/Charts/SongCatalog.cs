@@ -127,8 +127,12 @@ namespace InFalsusChartLoader
         /// </summary>
         private const string FilteredPrefix = "tutorial";
 
-        /// <summary>How many locales the title-reading array is indexed by. `Localization` goes to 5.</summary>
-        private const int LocaleCount = 6;
+        /// <summary>
+        /// A ceiling on a title-reading array's length, so that a template which is not an array is
+        /// refused rather than allocated for. A bound this mod chooses, not a count of anything: it is
+        /// the size at which a number stops being able to be a number of languages.
+        /// </summary>
+        private const int LocaleLimit = 64;
 
         // ---- PackData ----
         private static int PackDataPacks => Offsets.PackData.Packs;
@@ -445,8 +449,11 @@ namespace InFalsusChartLoader
             if (songIds == IntPtr.Zero) return 0;
 
             // The shipped songs carry a title-reading array, and its shape (one entry per locale) is
-            // what a new song's has to have. Taken from a real one rather than guessed at.
-            IntPtr titleTemplate = Memory.Ptr(oldSongs + Offsets.Runtime.ArrayDataOffset + SongInfoTitleReading);
+            // what a new song's has to have. Taken from the first song that carries one — not from the
+            // first song, which is what this used to take: the table has empty slots and the one at the
+            // head has an empty readings array (a run measured its length as zero), which is why the
+            // locale count used to be a constant here instead.
+            IntPtr titleTemplate = FirstReadings(oldSongs, oldCount);
 
             for (int i = 0; i < charts.Count; i++)
             {
@@ -633,15 +640,23 @@ namespace InFalsusChartLoader
         ///
         /// The same text for every language: the `if` file carries one name, and inventing readings
         /// for languages the author did not write would be worse than repeating the one they did.
-        /// The array's shape comes from a shipped song so its length matches what the game indexes
-        /// with, rather than a length this mod assumes.
+        /// The array's shape comes from a shipped song, so its length is the game's own answer to how
+        /// many locales there are — this used to carry that count as a constant and pad a short
+        /// template up to it, which is a number the game already knows. One that could not be a count
+        /// of languages is refused: the field is then left null, which is the state a song that asks
+        /// for no override is in, and the name comes from the localisation table either way.
         /// </summary>
         private static IntPtr BuildReadings(IntPtr template, string text)
         {
             if (!Memory.LooksLikeObject(template)) return IntPtr.Zero;
 
             int locales = Memory.I32(template + Offsets.Runtime.ArrayLength);
-            if (locales < LocaleCount) locales = LocaleCount;
+            if (locales <= 0 || locales > LocaleLimit)
+            {
+                Diagnostics.Warn($"the shipped title readings hold no locale count ({locales}); " +
+                                 $"'{text}' keeps its name from the localisation table");
+                return IntPtr.Zero;
+            }
 
             IntPtr array = NewArray(template, locales);
             if (array == IntPtr.Zero) return IntPtr.Zero;
@@ -802,6 +817,31 @@ namespace InFalsusChartLoader
             }
 
             Diagnostics.Warn("no shipped song has four difficulty records to take a shape from");
+            return IntPtr.Zero;
+        }
+
+        /// <summary>
+        /// A shipped song's title-reading array — the shape a new song's has to have, one entry per
+        /// locale, taken from the first song that carries one.
+        ///
+        /// The length of that array is the game's own answer to how many locales there are, and it is
+        /// what the constant this used to pad to was standing in for. A song with no reading override
+        /// carries an empty array, so the walk skips those; zero here means no shipped song has one,
+        /// and the caller then writes no override at all, which leaves the title to the localisation
+        /// table — a state the game has for its own songs and handles.
+        /// </summary>
+        private static IntPtr FirstReadings(IntPtr songs, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                IntPtr readings = Memory.Ptr(songs + Offsets.Runtime.ArrayDataOffset +
+                                             i * SongInfoSize + SongInfoTitleReading);
+                if (Memory.LooksLikeObject(readings) &&
+                    Memory.I32(readings + Offsets.Runtime.ArrayLength) > 0)
+                    return readings;
+            }
+
+            Diagnostics.Warn("no shipped song carries a title-reading array to take a shape from");
             return IntPtr.Zero;
         }
 

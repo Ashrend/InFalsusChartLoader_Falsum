@@ -319,12 +319,16 @@ namespace InFalsusChartLoader
 
                 byte difficulty = 1;
 
-                // The record the reader would write on a hit, at the size the game's own writer
-                // asserts for it (96 — SAVE_RE §4.2). The key used below is in no table, so this
-                // call is a miss and the buffer is a guard rather than a working area — but a
-                // struct size has no name to look up and nothing here to measure it off, so it is
-                // flagged rather than passed off as resolved (`CHARTLOADER_HANDOFF_V17` §8.2).
-                byte* result = stackalloc byte[96];
+                // The record the reader would write on a hit, at its own size — asked of the game the
+                // way every other struct size here is (`FieldResolver.ValueSize`), because a struct has
+                // no name for its own size to be resolved by. The key used below is in no table, so
+                // this call is a miss and the buffer is a guard rather than a working area; a size that
+                // cannot be asked is a refusal, because a buffer that is short is written past rather
+                // than reported.
+                int record = FieldResolver.ValueSize("GameResultV4");
+                if (record <= 0) return "no self-test (the result record's size could not be asked of the game)";
+
+                byte* result = stackalloc byte[record];
 
                 IntPtr* args = stackalloc IntPtr[3];
                 args[0] = (IntPtr)song;

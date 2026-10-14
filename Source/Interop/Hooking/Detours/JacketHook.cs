@@ -153,8 +153,8 @@ namespace InFalsusChartLoader
             //
             // A third fact about this method, from `dump.cs`, because it decides what the walk below
             // can return: `_MIA<T>` is declared `// RVA: -1` — the generic definition has no code —
-            // and its `GenericInstMethod` block lists exactly one instantiation, `_MIA<object>`, at
-            // 0x75C770. That is the body every reference-type call goes to, including the cards'.
+            // and its `GenericInstMethod` block lists exactly one instantiation, `_MIA<object>`. That
+            // is the body every reference-type call goes to, including the cards'.
             // `script.json` agrees from the other side: the `_MIA<Material>` usage has
             // `MethodAddress: 0` while every entry around it has a real one.
             IntPtr load = MethodResolver.ByRuntime("AddressableHandleAutoReleaser", "_MIA",

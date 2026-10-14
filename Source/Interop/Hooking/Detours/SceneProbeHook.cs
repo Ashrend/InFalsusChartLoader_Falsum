@@ -111,7 +111,7 @@ namespace InFalsusChartLoader
         /// song-select screen and no UI responds" — which is what is observed — and it also explains
         /// `va=0`, because the chart is only asked for after the switch completes.
         ///
-        /// The state field is the `&lt;&gt;1__state` of the generated coroutine at `+0x10`; the value
+        /// The state field is the generated coroutine's `&lt;&gt;1__state`, and the value
         /// says which `yield` it is parked at. Reported only — nothing is changed.
         /// </summary>
         internal static long SceneSwitchCalls;
@@ -125,9 +125,9 @@ namespace InFalsusChartLoader
         /// is the whole of the question — and it is the one fact that changes between a transition
         /// that finishes and one that does not.
         ///
-        /// The object is `&lt;&gt;2__current` at `+0x18`, and it is null for a `yield return null` (the
-        /// frame loops, which are the transitions that do progress). Only a non-null one is kept, so
-        /// what is left is exactly "the thing being waited on".
+        /// The object is the generated coroutine's `&lt;&gt;2__current`, and it is null for a
+        /// `yield return null` (the frame loops, which are the transitions that do progress). Only a
+        /// non-null one is kept, so what is left is exactly "the thing being waited on".
         /// </summary>
         internal static IntPtr SceneSwitchWait;
         internal static string SceneSwitchWaitName;
@@ -229,8 +229,8 @@ namespace InFalsusChartLoader
             // A finished coroutine clears it too. `<>2__current` is not reset when `MoveNext` reports
             // done, so the last object stayed recorded and the probe went on printing it during the
             // minutes the game then sat on a screen doing nothing — which reads as a stall and is not
-            // one. Measured: a run that was not stuck printed `wait=_Ig/+0x10=0` for forty seconds at
-            // `@-1`, which is exactly the line a real stall produces.
+            // one. Measured: a run that was not stuck printed the wait's own flag as zero for forty
+            // seconds at `@-1`, which is exactly the line a real stall produces.
             IntPtr current = more == 0 ? IntPtr.Zero : Memory.Ptr(self + CurrentField);
             if (current == IntPtr.Zero)
             {

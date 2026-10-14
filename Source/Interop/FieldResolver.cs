@@ -178,6 +178,28 @@ namespace InFalsusChartLoader
             return Memory.Ptr(klass + Offsets.Runtime.ClassStatics);
         }
 
+        /// <summary>
+        /// How many bytes one of a value type takes — asked of the game, because a struct's size is
+        /// not a field and there is no name for it to be resolved by.
+        ///
+        /// A value type's class answers with the size one has once boxed, and the runtime's own value
+        /// return takes the object header off that same number before it allocates for the value
+        /// (`il2cpp_runtime_invoke`, its value-type branch: `instance_size - 16`). Measured in this
+        /// build: `il2cpp_class_instance_size` reads `klass + 248`.
+        ///
+        /// <b>-1</b> when the type is not a value type this mod can reach — a size is not a thing to
+        /// guess at, and a caller that gets -1 must refuse rather than carry on with a buffer that is
+        /// the wrong length.
+        /// </summary>
+        internal static int ValueSize(string typeName)
+        {
+            IntPtr klass = ClassPointer(typeName);
+            if (klass == IntPtr.Zero || !IsValueType(klass)) return -1;
+
+            long boxed = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_instance_size(klass);
+            return boxed > ObjectHeader ? (int)(boxed - ObjectHeader) : -1;
+        }
+
         private static bool TryField(string typeName, string fieldName, out int offset)
         {
             offset = 0;
@@ -198,8 +220,8 @@ namespace InFalsusChartLoader
                     // Whether to correct for the object header is asked of **IL2CPP**, not of the
                     // generated `System.Type`: Cpp2IL emits the game's structs as classes, so
                     // `Type.IsValueType` is false for exactly the types that need the correction — and
-                    // the failure is silent and uniform (every field of every struct comes back
-                    // 0x10 too high), which reads like "the game moved everything".
+                    // the failure is silent and uniform (every field of every struct comes back one
+                    // object header too high), which reads like "the game moved everything".
                     offset = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(info) -
                              (IsValueType(ClassOf(type)) ? ObjectHeader : 0);
                     return true;

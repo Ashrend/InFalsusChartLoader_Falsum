@@ -81,9 +81,9 @@ namespace InFalsusChartLoader
 
             /// <summary>
             /// The note list inside `_R._rC`'s `ValueTuple&lt;_t, List&lt;_fA&gt;, List&lt;_eA&gt;&gt;`:
-            /// the tuple's second element, so it sits after the 16-byte `_t`. A tuple has no field
-            /// names to ask for and the size of `_t` is not measurable — a container layout, not a
-            /// game field, so it lives here with the rest.
+            /// the tuple's second element, so it sits after the tuple's first element, `_t`. A tuple
+            /// has no field names to ask for and the size of `_t` is not measurable — a container
+            /// layout, not a game field, so it lives here with the rest.
             /// </summary>
             internal const int ChartTupleNotes = 0x10;
 
@@ -97,15 +97,15 @@ namespace InFalsusChartLoader
             /// </summary>
             internal static class ReadRecord
             {
-                internal const int Info = 0;          // record[0]: the info block the read works on
-                internal const int Handle = 8;        // record[1]: index | length << 24 | kind << 56
-                internal const int Size = 40;         // five qwords, copied whole into `_bGA`
+                internal const int Info = 0;          // the record's first word: the block the read works on
+                internal const int Handle = 8;        // the second: index, length and kind packed together
+                internal const int Size = 40;         // the whole record, copied into `_bGA`
                 internal const int IndexMask = 0xFFFFFF;
 
-                internal const int Offset = 8;        // info+8: where in the file this read starts
-                internal const int Length = 12;       // info+12: how many bytes it asks for
-                internal const int Buffer = 32;       // info+32: where those bytes go
-                internal const int BytesRead = 40;    // info+40: how many were put there
+                internal const int Offset = 8;        // in the info block: where in the file this read starts
+                internal const int Length = 12;       // how many bytes it asks for
+                internal const int Buffer = 32;       // where those bytes go
+                internal const int BytesRead = 40;    // how many were put there
             }
 
             /// <summary>
@@ -126,10 +126,10 @@ namespace InFalsusChartLoader
             /// `System.Collections.BitArray.m_array` and `m_length`.
             ///
             /// A BCL layout, so it sits here rather than with the game's fields: taken from the game's
-            /// own `BitArray.Get`, which bounds-checks against `+0x18` and fetches the word from
-            /// `+0x10`. (Every IL2CPP object starts with eight bytes of class and eight of monitor, so
-            /// the first field is at `0x10` — and `0x08` is the monitor, which reads as zero, which is
-            /// how a wrong value here fails quietly.)
+            /// own `BitArray.Get`, which bounds-checks against the one and fetches the word from the
+            /// other. (Every IL2CPP object starts with its class word and its monitor word, so the
+            /// first field sits after both — and the monitor slot reads as zero, which is how a wrong
+            /// value here fails quietly.)
             /// </summary>
             internal const int BitArrayArray = 0x10;
             internal const int BitArrayLength = 0x18;

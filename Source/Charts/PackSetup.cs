@@ -256,10 +256,9 @@ namespace InFalsusChartLoader
         /// language, so every slot is `index × pointer size` and the struct is five of them.
         ///
         /// Written this way rather than as literals because what fixes the layout is the pointer size,
-        /// which belongs to the runtime and not to this game: on x64 these come out as
-        /// 0x28 / 0x00 / 0x08 / 0x18 / 0x20 — the numbers this file used to carry — and the third slot
-        /// is the one language this mod does not write. (The type has no declaration of its own to
-        /// look up in the dump, which is why it is not resolved by name like the fields above.)
+        /// which belongs to the runtime and not to this game. The third slot is the one language this
+        /// mod does not write. (The type has no declaration of its own to look up in the dump, which is
+        /// why it is not resolved by name like the fields above.)
         /// </summary>
         private static readonly int TextMappingValuesSize = 5 * IntPtr.Size;
 
@@ -411,7 +410,7 @@ namespace InFalsusChartLoader
         /// and therefore the only place the field has a real offset.
         ///
         /// The dump cannot answer this one: `StringTypeMapping&lt;T&gt;` is generic, so its fields are
-        /// rendered at `0x0` there, and every candidate this mod can look up by name is a generic
+        /// rendered with no layout there, and every candidate this mod can look up by name is a generic
         /// definition whose fields have no layout. Asking the instance's class is the same route
         /// `CustomResults` takes for the save container, which is generic for the same reason. The
         /// constant this used to fall back to is gone: a name that cannot be asked leaves this at -1

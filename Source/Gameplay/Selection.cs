@@ -186,8 +186,8 @@ namespace InFalsusChartLoader
         // Four offsets, all asked by name: `_NH._DEb` (the container), the container's own `_iEb`
         // (its object field — the class is generic, so only the instance's class has a layout), then
         // `SingleFileSaveDataV2.GeneralSaveState` and `GeneralSaveStateV5.LastSelectedDifficulty`.
-        // The route is the game's own getter for that field, `_NH._gOA`, which is
-        // `[container + 0x10] + 0x38`; see `FromSave` for what it is for.
+        // The route is the game's own getter for that field, `_NH._gOA`, which walks those same two
+        // names; see `FromSave` for what it is for.
 
         private static int SaveContainer = Offsets.Unresolved;
         private static int SaveObject = Offsets.Unresolved;
@@ -407,8 +407,8 @@ namespace InFalsusChartLoader
 
             if (SaveObject == Offsets.Unresolved)
             {
-                // `_iEb` is on `_NH._OH<T>` — a generic, whose fields the dump renders at 0x0 and
-                // whose definition has no layout to ask about. Asked of the instance's own class,
+                // `_iEb` is on `_NH._OH<T>` — a generic, whose fields the dump renders with no layout
+                // and whose definition has no layout to ask about. Asked of the instance's own class,
                 // the same route `CustomResults` takes for the same reason.
                 SaveObject = FieldOn(container, "_iEb");
                 if (SaveObject < 0) { _saveMissing = true; return -1; }

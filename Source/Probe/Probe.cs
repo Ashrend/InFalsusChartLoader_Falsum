@@ -288,7 +288,7 @@ namespace InFalsusChartLoader
 
             // Every pack, not the first four: this mod's is at the end of the list, and so is the DLC
             // pack whose id it must not take — the two numbers a reader has to compare are on that
-            // line. The stride is measured, not the 0x18 this used to carry: `PackInfo` gained a
+            // line. The stride is measured, not the constant this used to carry: `PackInfo` gained a
             // field, and reading rows at the old stride printed ids and slugs that belonged to no
             // pack at all.
             for (int i = 0; i < count && i < 12; i++)
