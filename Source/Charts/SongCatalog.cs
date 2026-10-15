@@ -517,20 +517,15 @@ namespace InFalsusChartLoader
 
             Memory.WritePtr(songData + SongDataAllSongs, songs);
 
-            // The song list is filtered on this table, so the entries have to be there before the game
-            // next builds that list — which is any time from now on, not only at the rebuild below.
-            // The ids are the slots the songs landed in, which is why this runs after the loop.
-            var ids = new List<int>(charts.Count);
-            for (int i = 0; i < charts.Count; i++) ids.Add(oldCount + i);
-
-            // The count matters: a song with no entry here sits in `allSongInfo` but is filtered out
-            // of the song list, which from the player's side is a song that does not exist. The
-            // reasons are Debug-build detail (`RewardEntries`); this line is the one a release keeps,
-            // because a missing song is the one thing nobody would otherwise be told.
-            int filed = RewardEntries.Add(ids);
-            if (filed < ids.Count)
-                Diagnostics.WarnRelease($"{ids.Count - filed} of {ids.Count} custom song(s) will not " +
-                                        "appear in the song list");
+            // These songs get no entry in `RewardData._Geb` — the table that says which story a song
+            // belongs to — and that is deliberate rather than an omission. The table is a gate, not a
+            // listing: both of the game's own derivations of "the songs there are" (`_NH._yoA`, which
+            // builds the song select's list, and `_ToA`, which the pack strip, the hub's pick of a
+            // song to show and the unlock banner read) take a song whose story's bit is clear *out*
+            // of the result, and take a song that is not in the table at all *in*. A custom song
+            // filed under a shipped song's story would thus be hidden until that story is reached,
+            // while left out of the table it is simply shown. This used to be done — and the line
+            // that reported its failure said the opposite of what the table does.
 
             // The song's title and artist as its card shows them: the localisation table, keyed by song
             // id — the same table the pack's name goes in, and the same write. See SetSongText. The

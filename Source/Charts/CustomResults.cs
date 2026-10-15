@@ -151,7 +151,7 @@ namespace InFalsusChartLoader
 
             try
             {
-                IntPtr save = RewardEntries.PlayerSave();
+                IntPtr save = PlayerSave();
                 int containerField = FieldResolver.Field("_NH", "_DEb");
                 if (containerField < 0) { PrepareFailed("no field"); return; }
                 SaveContainer = containerField;
@@ -259,6 +259,27 @@ namespace InFalsusChartLoader
         private static void PrepareFailed(string why) =>
             Diagnostics.Error("the custom results could not be prepared; the custom songs' scores " +
                               "will not be read or saved: " + why);
+
+        /// <summary>
+        /// The player's save — `_K._NH`'s singleton, which is the first word of its statics block.
+        ///
+        /// Read off the game's own use of it rather than from a field name: the play gate reaches it
+        /// by dereferencing the class's static-fields block, which is the route
+        /// <see cref="FieldResolver.Statics"/> takes for every class. The game's own save container
+        /// — the file beside which this class keeps `IFCL.sav`, and the object its path is read from
+        /// — is reached off this one.
+        /// </summary>
+        private static IntPtr PlayerSave()
+        {
+            IntPtr klass = FieldResolver.ClassPointer("_NH");
+            if (klass == IntPtr.Zero) return IntPtr.Zero;
+
+            IntPtr statics = FieldResolver.Statics(klass);
+            if (statics == IntPtr.Zero) return IntPtr.Zero;
+
+            IntPtr save = Memory.Ptr(statics);
+            return Memory.LooksLikeObject(save) ? save : IntPtr.Zero;
+        }
 
         /// <summary>
         /// Keeps one of this mod's objects alive for the session.
@@ -767,7 +788,7 @@ namespace InFalsusChartLoader
             {
                 if (FieldWrittenBytes <= 0) return IntPtr.Zero;
 
-                IntPtr save = RewardEntries.PlayerSave();
+                IntPtr save = PlayerSave();
                 IntPtr official = save == IntPtr.Zero ? IntPtr.Zero : Memory.Ptr(save + SaveContainer);
                 if (!Memory.LooksLikeObject(official)) return IntPtr.Zero;
 
