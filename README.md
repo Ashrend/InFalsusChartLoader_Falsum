@@ -32,56 +32,7 @@ Debug构建产物位于 `bin/Debug/InFalsusChartLoader.dll`。
 
 ## 使用
 
-`Charts` 下**每个子文件夹即为一首歌**，mod会严格按照引导文件 `if` 进行加载
-
-`if` 文件示例：
-```json
-{
-  "id": "20260929052150xingwei",              //谱面id，需要尽可能的保证它是唯一的，若重复则不加载谱面
-  "name": "music",                            //曲名
-  "composer": "I don’t know",                 //曲师
-  "song": "music.mp3",                        //歌曲文件，接受ogg、mp3、wav
-  "illust": "I don’t know",                   //曲绘画师；为可选参数
-  //"illust": ["I don’t know!", "I know!", "oh!", "hey?"],
-  //也可以为每张曲绘单独设置画师[Minimal,Evolved,Ultimate,Forbidden]
-  "jacket": "jkt.png",                        //曲绘，只接受png，需要为正方形
-  //"jacket": ["jkt.png", "jtk.png", "kjt.png", "ktj.png"],
-  //也可以为每张谱面单独设置曲绘[Minimal,Evolved,Ultimate,Forbidden]
-  "background": "bg.mp4",
-  //谱面内的背景，接受png与mp4；为可选参数
-  //"background": ["bg.png", "gb.mp4", "gg.png", "bb.mp4"],
-  //也可以为每张谱面单独设置背景[Minimal,Evolved,Ultimate,Forbidden]
-  "preview_seconds": ["0", "60"],
-  //预览音频时间[开始,结束]，以秒计算
-  "charter": ["Skytarry", "MagicNeko", "XingWei", "Xing_W"],
-  //谱师[Minimal,Evolved,Ultimate,Forbidden]
-  "chart": ["temp.spc", "dummy.spc", "untitled.spc", "chart.spc"],
-  //谱面文件，不兼容demo格式[Minimal,Evolved,Ultimate,Forbidden]
-  "lv": [1, 1, 1, 15]
-  //谱面难度[Minimal,Evolved,Ultimate,Forbidden]
-}
-```
-
-文件夹示例：
-```
-Charts
-      `-- chart
-          |-- bb.mp4
-          |-- bg.mp4
-          |-- bg.png
-          |-- chart.spc
-          |-- dummy.spc
-          |-- gb.mp4
-          |-- gg.png
-          |-- if
-          |-- jkt.png
-          |-- jtk.png
-          |-- kjt.png
-          |-- ktj.png
-          |-- music.mp3
-          |-- temp.spc
-          `-- untitled.spc
-```
+`Charts` 下**每个子文件夹即为一首歌**，mod会严格按照引导文件 `if` 进行加载，详见[if文件示例文档](./IF.EXAMPLE.md)
 
 加载后，选曲界面最上方会出现合集 **IFCL**
 
