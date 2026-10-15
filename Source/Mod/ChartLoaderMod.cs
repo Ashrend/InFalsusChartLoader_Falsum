@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using MelonLoader;
 
-[assembly: MelonInfo(typeof(InFalsusChartLoader.ChartLoaderMod), "InFalsusChartLoader", "0.1.0", "MagicNeko", "https://github.com/Its-MagicNeko/InFalsusChartLoader/releases/latest")]
+[assembly: MelonInfo(typeof(InFalsusChartLoader.ChartLoaderMod), "InFalsusChartLoader", "0.1.1", "MagicNeko", "https://github.com/Its-MagicNeko/InFalsusChartLoader/releases/latest")]
 [assembly: MelonGame("lowiro", "infalsus")]
 
 namespace InFalsusChartLoader

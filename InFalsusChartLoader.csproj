@@ -10,7 +10,7 @@
 
     <!-- The DLL's identity. NOT what MelonLoader displays; that is the MelonInfo attribute in
          Source/Mod/ChartLoaderMod.cs. Keep the two in step by hand. -->
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <AssemblyVersion>0.1.1</AssemblyVersion>
   </PropertyGroup>
 
   <!-- The SDK would add six more assembly attributes: Company, Configuration, FileVersion,
