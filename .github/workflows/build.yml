@@ -59,9 +59,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: InFalsusChartLoader-Release
+          pattern: InFalsusChartLoader-*
+
+      - run: zip -rq InFalsusChartLoader-Release.zip InFalsusChartLoader-Release && zip -rq InFalsusChartLoader-Debug.zip InFalsusChartLoader-Debug
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: InFalsusChartLoader.dll
+          files: '*.zip'
           generate_release_notes: true
