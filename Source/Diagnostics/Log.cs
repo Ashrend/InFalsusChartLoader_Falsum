@@ -49,12 +49,37 @@ namespace InFalsusChartLoader
     /// </summary>
     internal static class Diagnostics
     {
+        /// <summary>
+        /// The loader's own logger — the only place in this file that names it.
+        ///
+        /// MelonLoader's logger prefixes a line with this mod's assembly name, which is why the
+        /// mod's own lines are findable in a shared log without a tag of their own. A second
+        /// loader's sink must keep the same three levels; it is not in this branch yet.
+        /// </summary>
+        private static class Sink
+        {
+#if MELONLOADER
+            internal static void Msg(string message) => MelonLoader.MelonLogger.Msg(message);
+            internal static void Error(string message) => MelonLoader.MelonLogger.Error(message);
+            internal static void Warning(string message) => MelonLoader.MelonLogger.Warning(message);
+#elif BEPINEX
+            private static readonly BepInEx.Logging.ManualLogSource Source =
+                BepInEx.Logging.Logger.CreateLogSource("InFalsusChartLoader");
+
+            internal static void Msg(string message) => Source.LogInfo(message);
+            internal static void Error(string message) => Source.LogError(message);
+            internal static void Warning(string message) => Source.LogWarning(message);
+#else
+#error Define MELONLOADER or BEPINEX.
+#endif
+        }
+
         /// <summary>Narration about a run — Debug builds only. See the class summary.</summary>
         [Conditional("DEBUG")]
         internal static void Info(string message)
         {
 #if DEBUG
-            MelonLoader.MelonLogger.Msg(message);
+            Sink.Msg(message);
 #endif
         }
 
@@ -69,10 +94,10 @@ namespace InFalsusChartLoader
         /// which three, and why that one, is what the debug build is for. Every line here is a string
         /// in the shipped assembly.
         /// </summary>
-        internal static void Load(string message) => MelonLoader.MelonLogger.Msg(message);
+        internal static void Load(string message) => Sink.Msg(message);
 
         /// <summary>Something is wrong and the mod has stopped doing it: a detour faulted.</summary>
-        internal static void Error(string message) => MelonLoader.MelonLogger.Error(message);
+        internal static void Error(string message) => Sink.Error(message);
 
         /// <summary>
         /// A warning a Release build keeps — for the one thing the person running that build has to
@@ -91,7 +116,7 @@ namespace InFalsusChartLoader
         /// `[Conditional]` call cannot be conditional per call site, so the choice has to be visible
         /// at the call site, and it is.
         /// </summary>
-        internal static void WarnRelease(string message) => MelonLoader.MelonLogger.Warning(message);
+        internal static void WarnRelease(string message) => Sink.Warning(message);
 
         /// <summary>
         /// Something is wrong and the mod works around it: a missing hook, an offset that would not
@@ -102,7 +127,7 @@ namespace InFalsusChartLoader
         internal static void Warn(string message)
         {
 #if DEBUG
-            MelonLoader.MelonLogger.Warning(message);
+            Sink.Warning(message);
 #endif
         }
 
