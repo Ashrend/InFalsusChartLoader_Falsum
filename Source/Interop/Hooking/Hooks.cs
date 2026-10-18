@@ -112,15 +112,18 @@ namespace InFalsusChartLoader
     /// </description></item>
     /// </list>
     /// <para>
-    /// Attaching a detour costs about 400 ms. Measured in the sibling mod in this repository: every
-    /// hook 395-418 ms, independent of the size of the function being hooked — the shape of a fixed
-    /// wait, not of work. Where it goes is not known; it is inside MelonLoader's own native bootstrap,
-    /// and it is not MonoMod, which is the Mono path.
+    /// In the MelonLoader build, attaching a detour costs about 400 ms. Measured in the sibling mod
+    /// in this repository: every hook 395-418 ms, independent of the size of the function being
+    /// hooked — the shape of a fixed wait, not of work. Where it goes is not known; it is inside
+    /// MelonLoader's own native bootstrap, and it is not MonoMod, which is the Mono path. The BepInEx
+    /// build is not covered by this measurement.
     /// </para>
     /// <para>
-    /// `NativeHook&lt;T&gt;.Attach()` does not report failure — `CoreClrDelegateFixer.SanityCheckDetour`
-    /// returns silently when it is not satisfied — so a "hooked" line in the log means the call was
-    /// made, not that the hook is in place.
+    /// In the MelonLoader build, `NativeHook&lt;T&gt;.Attach()` does not report failure —
+    /// `CoreClrDelegateFixer.SanityCheckDetour` returns silently when it is not satisfied — so a
+    /// "hooked" line in the log means the call was made, not that the hook is in place. See
+    /// <see cref="NativeHook{T}"/> for the one place a second loader's backend has to keep that
+    /// contract.
     /// </para>
     /// </remarks>
     internal static unsafe partial class Hooks

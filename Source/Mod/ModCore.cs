@@ -1,11 +1,5 @@
-extern alias UnityEngineCore;
-
 using System;
 using System.Collections.Generic;
-using MelonLoader;
-
-[assembly: MelonInfo(typeof(InFalsusChartLoader.ChartLoaderMod), "InFalsusChartLoader", "0.1.1", "MagicNeko", "https://github.com/Its-MagicNeko/InFalsusChartLoader/releases/latest")]
-[assembly: MelonGame("lowiro", "infalsus")]
 
 namespace InFalsusChartLoader
 {
@@ -23,11 +17,13 @@ namespace InFalsusChartLoader
     /// not contain it, which is the visible form of "非法则不导入".
     /// </description></item>
     /// <item><description>
-    /// <b>Hook.</b> Twenty detours, installed by ten functions before the game can ask for
+    /// <b>Hook.</b> Twenty-one detours, installed by eleven functions before the game can ask for
     /// anything. Eight of them answer for something — the chart, the audio (a name and a read), and
     /// the pictures (three reference getters and two loaders, all sharing one handshake). One more
     /// answers for this mod's pack at the single place the game reads a pack's row of visuals, giving
-    /// it the In Falsus pack's row. Two only
+    /// it the In Falsus pack's row. One answers for a custom song's difficulty state at the game's
+    /// own state query, `_NH._UoA`: every difficulty is open, and one the `if` file left chartless
+    /// answers 0. Two only
     /// count: the play gate and the scene switch say whether the game took each step, which is not
     /// something the decompilation can be read for. Two change what the game does around a call
     /// it makes, so that a difficulty change reaches the pictures — one on the song select, one on
@@ -50,8 +46,14 @@ namespace InFalsusChartLoader
     /// </description></item>
     /// </list>
     /// </summary>
-    public class ChartLoaderMod : MelonMod
+    internal static class ModCore
     {
+        /// <summary>
+        /// The version both loader entries carry. The project file's `AssemblyVersion` is the
+        /// assembly's identity; this is the mod's. Keep the two in step by hand.
+        /// </summary>
+        internal const string Version = "0.2.0";
+
         /// <summary>What was imported, waiting for the game's data to exist so it can be registered.</summary>
         private static List<ChartInfo> _imported = new List<ChartInfo>();
 
@@ -62,17 +64,21 @@ namespace InFalsusChartLoader
         private static int _frames;
 #endif
 
-        public override void OnInitializeMelon()
+        /// <summary>
+        /// The line every build prints: it says the mod is here. Kept in one place so the two
+        /// loader entries cannot drift apart.
+        /// </summary>
+        internal static void Loaded()
         {
             Diagnostics.Load("InFalsusChartLoader loading...");
         }
 
         /// <summary>
-        /// Where the real work starts. Not <see cref="OnInitializeMelon"/>: the interop assemblies
-        /// are only wired up after MelonLoader has generated them, and until they are there is no
-        /// game to ask about anything.
+        /// Where the real work starts. Not the loader's first callback: the interop assemblies are
+        /// only wired up after the loader has generated them, and until they are there is no game to
+        /// ask about anything.
         /// </summary>
-        public override void OnLateInitializeMelon()
+        internal static void Initialize()
         {
             try
             {
@@ -85,7 +91,7 @@ namespace InFalsusChartLoader
                 }
 
                 // Asked once here for the log only. It is asked for real at registration, which is
-                // the first moment the answer can be yes -- see OnUpdate.
+                // the first moment the answer can be yes -- see Update.
                 bool assetsReady = StreamingAssets.Resolve();
 
                 string root = ChartLibrary.Locate();
@@ -120,7 +126,7 @@ namespace InFalsusChartLoader
         /// there is no one place they become available, and the cost of asking is two pointer reads
         /// and a null check per frame until they do.
         /// </summary>
-        public override void OnUpdate()
+        internal static void Update()
         {
             // The one thing this mod has that runs every frame while a chart does: the in-play clip
             // is started and kept on the game's own chart clock from here — see `VideoBackground`.
@@ -234,7 +240,8 @@ namespace InFalsusChartLoader
             }
         }
 
-        public override void OnDeinitializeMelon()
+        /// <summary>Stops every detour. The loader calls this once, on the way out.</summary>
+        internal static void Shutdown()
         {
             Hooks.Uninstall();
         }
@@ -244,7 +251,7 @@ namespace InFalsusChartLoader
         ///
         /// The asset manager is asked for room here rather than at import, because at import it does
         /// not exist yet and a failure then would have looked exactly like a bad chart folder. It is
-        /// asked for once: <see cref="OnUpdate"/> does not call this again after a failure.
+        /// asked for once: <see cref="Update"/> does not call this again after a failure.
         /// </summary>
         private static List<ChartInfo> RegisterAudio(List<ChartInfo> charts)
         {

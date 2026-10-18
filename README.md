@@ -1,6 +1,6 @@
 # InFalsusChartLoader
 
-In Falsus的自制谱加载Mod，使用[MelonLoader](https://github.com/LavaGang/MelonLoader)加载
+In Falsus的自制谱加载Mod，使用[MelonLoader](https://github.com/LavaGang/MelonLoader)或[BepInEx](https://github.com/BepInEx/BepInEx)加载
 
 ---
 
@@ -9,24 +9,33 @@ In Falsus的自制谱加载Mod，使用[MelonLoader](https://github.com/LavaGang
 需要 [.NET SDK](https://dotnet.microsoft.com/download)（目标框架 `net6.0`）
 
 ```cmd
-build.bat          :: Release构建
-build.bat Debug    :: Debug构建
+build.bat                  :: MelonLoader Release（默认）
+build.bat Debug            :: MelonLoader Debug
+build.bat --BepInEx        :: BepInEx Release
+build.bat --BepInEx Debug  :: BepInEx Debug
 ```
 
-Release构建产物位于 `bin/Release/InFalsusChartLoader.dll`。
-
-Debug构建产物位于 `bin/Debug/InFalsusChartLoader.dll`。
+构建产物位于 `bin/`
 
 ---
 
 ## 安装
+
+### MelonLoader
 
 1. 安装 [MelonLoader](https://github.com/LavaGang/MelonLoader)
 2. 获取 `InFalsusChartLoader.dll`
 3. 放进游戏目录下的 `Mods` 文件夹
 4. 启动游戏
 
-自制谱放在 `Charts` 文件夹（即 `GAME_PATH/Charts`，若不存在则会自动创建）
+### BepInEx
+
+1. 安装 [BepInEx](https://github.com/BepInEx/BepInEx)
+2. 获取 `InFalsusChartLoader.dll`
+3. 将dll放进`GAME_PATH\BepInEx\plugins`
+4. 启动游戏
+
+自制谱放在游戏根目录的 `Charts` 文件夹（即 `GAME_PATH/Charts`，若不存在则会自动创建）
 
 ---
 
@@ -45,6 +54,7 @@ if文件只要有一条信息非法则不会导入该谱面
 ## 致谢
 
 - [MelonLoader](https://github.com/LavaGang/MelonLoader) —— mod 加载器
+- [BepInEx](https://github.com/BepInEx/BepInEx) —— mod 加载器
 
 ## 免责声明
 

@@ -29,24 +29,44 @@ jobs:
         with:
           dotnet-version: '6.0.x'
 
-      - name: 构建 Release
+      - name: 构建 MelonLoader Release
         shell: cmd
-        run: call build.bat Release
+        run: call build.bat --MelonLoader Release
 
-      - name: 构建 Debug
+      - name: 构建 MelonLoader Debug
         shell: cmd
-        run: call build.bat Debug
+        run: call build.bat --MelonLoader Debug
+
+      - name: 构建 BepInEx Release
+        shell: cmd
+        run: call build.bat --BepInEx Release
+
+      - name: 构建 BepInEx Debug
+        shell: cmd
+        run: call build.bat --BepInEx Debug
 
       - uses: actions/upload-artifact@v4
         with:
-          name: InFalsusChartLoader-Release
+          name: InFalsusChartLoader-MelonLoader-Release
           path: bin/Release/InFalsusChartLoader.dll
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
-          name: InFalsusChartLoader-Debug
+          name: InFalsusChartLoader-MelonLoader-Debug
           path: bin/Debug/InFalsusChartLoader.dll
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: InFalsusChartLoader-BepInEx-Release
+          path: bin/BepInExRelease/InFalsusChartLoader.dll
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: InFalsusChartLoader-BepInEx-Debug
+          path: bin/BepInExDebug/InFalsusChartLoader.dll
           if-no-files-found: error
 
   release:
@@ -61,8 +81,10 @@ jobs:
         with:
           pattern: InFalsusChartLoader-*
 
-      # - run: zip -rq InFalsusChartLoader-Release.zip InFalsusChartLoader-Release && zip -rq InFalsusChartLoader-Debug.zip InFalsusChartLoader-Debug
-      - run: zip -rjq InFalsusChartLoader-Release.zip InFalsusChartLoader-Release && zip -rjq InFalsusChartLoader-Debug.zip InFalsusChartLoader-Debug
+      - run: |
+          for d in InFalsusChartLoader-*/; do
+            zip -rjq "${d%/}.zip" "$d"
+          done
 
       - uses: softprops/action-gh-release@v2
         with:

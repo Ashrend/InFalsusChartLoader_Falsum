@@ -308,7 +308,7 @@ namespace InFalsusChartLoader
         /// <b>before</b> <see cref="SetText"/> asks the game for it: in a Release build the first
         /// song-text write of a run passed -1 — the fields start unresolved — and was dropped,
         /// aimed one byte before the mapping object. A Debug build only got away with it because a
-        /// probe asks for the pack's visuals early (see <c>ChartLoaderMod.OnUpdate</c>). Taking the
+        /// probe asks for the pack's visuals early (see <c>ModCore.Update</c>). Taking the
         /// name of the lookup and reading the field after <see cref="ResolveFields"/> makes the
         /// order impossible to get wrong.
         /// </summary>

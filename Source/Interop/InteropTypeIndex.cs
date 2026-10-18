@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+#if BEPINEX
+using System.IO;
+#endif
 
 namespace InFalsusChartLoader
 {
@@ -102,8 +105,49 @@ namespace InFalsusChartLoader
         private static bool IsGenerated(Assembly assembly)
         {
             string name = assembly.GetName().Name;
-            return name != null && name.StartsWith("Il2Cpp", StringComparison.Ordinal);
+            if (name == null) return false;
+            if (name.StartsWith("Il2Cpp", StringComparison.Ordinal)) return true;
+
+#if BEPINEX
+            // BepInEx keeps the game's own assembly names (`Game.dll`, `Game.Data.dll`, …) and
+            // prefixes only the BCL/Unity ones with `Il2Cpp`. The game's types are in the former,
+            // so the index has to take them too. The Unity interop assemblies are skipped for the
+            // reason in this method's summary: their generated UIElements stubs throw on
+            // enumeration, and nothing this mod asks for by name lives in them.
+            if (name.StartsWith("Unity", StringComparison.Ordinal)) return false;
+            return InteropAssemblyNames().Contains(name);
+#else
+            return false;
+#endif
         }
+
+#if BEPINEX
+        private static HashSet<string> _interopNames;
+
+        /// <summary>
+        /// The assembly names in BepInEx's `interop` folder — the generated set, named after the
+        /// game's own assemblies rather than with the `Il2Cpp` prefix. Read once; a folder that
+        /// cannot be read answers empty, which is the same as "nothing extra to index".
+        /// </summary>
+        private static HashSet<string> InteropAssemblyNames()
+        {
+            if (_interopNames != null) return _interopNames;
+
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                string folder = Path.Combine(BepInEx.Paths.BepInExRootPath, "interop");
+                foreach (string path in Directory.GetFiles(folder, "*.dll"))
+                    names.Add(Path.GetFileNameWithoutExtension(path));
+            }
+            catch (Exception e)
+            {
+                Diagnostics.Warn($"the interop folder could not be read: {Diagnostics.Describe(e)}");
+            }
+
+            return _interopNames = names;
+        }
+#endif
 
         private static void Add(Dictionary<string, List<Type>> index, string key, Type type)
         {

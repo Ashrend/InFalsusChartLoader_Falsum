@@ -63,6 +63,13 @@ namespace InFalsusChartLoader
             DirectoryInfo parent = Directory.GetParent(mod);
             string[] candidates =
             {
+#if BEPINEX
+                // BepInEx puts plugins in `<game>/BepInEx/plugins`, so the game's `Charts` is one
+                // level above the folder the MelonLoader layout calls "the mod folder".
+                parent?.Parent == null
+                    ? null
+                    : Path.GetFullPath(Path.Combine(parent.Parent.FullName, FolderName)),
+#endif
                 parent == null ? null : Path.GetFullPath(Path.Combine(parent.FullName, FolderName)),
                 Path.GetFullPath(Path.Combine(mod, FolderName)),
             };

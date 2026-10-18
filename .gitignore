@@ -4,9 +4,21 @@ obj/
 .vs/
 
 Managed/*
-!Managed/MelonLoader.dll
-!Managed/Il2CppInterop.Runtime.dll
-!Managed/Il2CppInterop.Common.dll
-!Managed/Il2Cppmscorlib.dll
-!Managed/Newtonsoft.Json.dll
-!Managed/UnityEngine.CoreModule.dll
+!Managed/MelonLoader/
+Managed/MelonLoader/*
+!Managed/MelonLoader/MelonLoader.dll
+!Managed/MelonLoader/Il2CppInterop.Runtime.dll
+!Managed/MelonLoader/Il2CppInterop.Common.dll
+!Managed/MelonLoader/Il2Cppmscorlib.dll
+!Managed/MelonLoader/UnityEngine.CoreModule.dll
+
+!Managed/BepInEx/
+Managed/BepInEx/*
+!Managed/BepInEx/BepInEx.Core.dll
+!Managed/BepInEx/BepInEx.Unity.IL2CPP.dll
+!Managed/BepInEx/BepInEx.Unity.Common.dll
+!Managed/BepInEx/SemanticVersioning.dll
+!Managed/BepInEx/Il2CppInterop.Runtime.dll
+!Managed/BepInEx/Il2CppInterop.Common.dll
+!Managed/BepInEx/Il2Cppmscorlib.dll
+!Managed/BepInEx/UnityEngine.CoreModule.dll
