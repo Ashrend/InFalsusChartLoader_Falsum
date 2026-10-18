@@ -10,7 +10,7 @@
 
     <!-- The DLL's identity. NOT what MelonLoader displays; that is ModCore.Version, used by the
          MelonInfo attribute in Source/Mod/Entry.Melon.cs. Keep the two in step by hand. -->
-    <AssemblyVersion>0.2.0</AssemblyVersion>
+    <AssemblyVersion>0.2.1</AssemblyVersion>
   </PropertyGroup>
 
   <!-- The detour shim and the entry point select their loader by this, and the references below

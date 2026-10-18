@@ -52,7 +52,7 @@ namespace InFalsusChartLoader
         /// The version both loader entries carry. The project file's `AssemblyVersion` is the
         /// assembly's identity; this is the mod's. Keep the two in step by hand.
         /// </summary>
-        internal const string Version = "0.2.0";
+        internal const string Version = "0.2.1";
 
         /// <summary>What was imported, waiting for the game's data to exist so it can be registered.</summary>
         private static List<ChartInfo> _imported = new List<ChartInfo>();
