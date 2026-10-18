@@ -61,7 +61,8 @@ jobs:
         with:
           pattern: InFalsusChartLoader-*
 
-      - run: zip -rq InFalsusChartLoader-Release.zip InFalsusChartLoader-Release && zip -rq InFalsusChartLoader-Debug.zip InFalsusChartLoader-Debug
+      # - run: zip -rq InFalsusChartLoader-Release.zip InFalsusChartLoader-Release && zip -rq InFalsusChartLoader-Debug.zip InFalsusChartLoader-Debug
+      - run: zip -rjq InFalsusChartLoader-Release.zip InFalsusChartLoader-Release && zip -rjq InFalsusChartLoader-Debug.zip InFalsusChartLoader-Debug
 
       - uses: softprops/action-gh-release@v2
         with:
