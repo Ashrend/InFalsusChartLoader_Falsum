@@ -80,6 +80,48 @@ namespace InFalsusChartLoader
         internal static int Lookup(string typeName, string fieldName) =>
             TryField(typeName, fieldName, out int offset) ? offset : -1;
 
+        /// <summary>
+        /// A named member of an enum, as its value, or <b>-1</b> when the name cannot be answered.
+        ///
+        /// Asked of the generated type rather than written down: an enum member's value is the
+        /// game's, and a number copied into this mod would outlive the build it was read from.
+        /// -1 is not a value any of this game's enums uses, so a caller that fails to check is
+        /// refusing on a number it cannot mistake for a real one.
+        /// </summary>
+        internal static int EnumValue(string typeName, string memberName)
+        {
+            try
+            {
+                if (InteropTypeIndex.ByName().TryGetValue(typeName, out List<Type> types))
+                {
+                    foreach (Type type in types)
+                    {
+                        if (type == null || !type.IsEnum) continue;
+
+                        FieldInfo member = type.GetField(memberName,
+                                                          BindingFlags.Public | BindingFlags.Static);
+                        if (member == null) continue;
+
+                        // The metadata constant, which does not run the type's initialiser and
+                        // does not box a value out of a static block.
+                        object raw = member.GetRawConstantValue();
+                        if (raw == null) continue;
+
+                        _asked++;
+                        return Convert.ToInt32(raw);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Diagnostics.Warn($"{typeName}.{memberName} could not be read: {Diagnostics.Describe(e)}");
+            }
+
+            _unresolved++;
+            Diagnostics.Error($"{typeName}.{memberName}: no enum member by that name in this build");
+            return -1;
+        }
+
         // ---------------------------------------------------------------- sizes
 
         private static readonly Dictionary<string, int> Measured = new Dictionary<string, int>();

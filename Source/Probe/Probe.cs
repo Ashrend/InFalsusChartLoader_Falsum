@@ -193,6 +193,10 @@ namespace InFalsusChartLoader
             // second number says the takeover is in force; it moves whenever the song select repaints
             // with a custom song selected, whatever the save's own story progress is.
             $"state={Hooks.DifficultyAsked}/{Hooks.DifficultyOurs} " +
+            // The results screen's unlock container: how often the game filled it, and how many of
+            // those fills were for a custom song and were answered with the container's own hide
+            // branch. The second number moving is what says the suppression is in force.
+            $"unlock={Hooks.UnlockFills}/{Hooks.UnlockHidden} " +
             // The selection the game last applied, and how often a difficulty change was given the
             // reload the game would not have done by itself. `askedNoPicture` above is the other
             // half: it counts the times a jacket was asked for and the difficulty could not be told,

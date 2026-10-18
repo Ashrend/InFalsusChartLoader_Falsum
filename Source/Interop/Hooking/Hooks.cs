@@ -16,7 +16,7 @@ namespace InFalsusChartLoader
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Twenty-one detours, installed by eleven functions. Eight of them exist because a custom song
+    /// Twenty-two detours, installed by twelve functions. Eight of them exist because a custom song
     /// needs the game to accept something it has no path for — a name it will look up, a byte range
     /// it will read, a picture it cannot reach. Each of those answers, and each is on a hot path, so
     /// each stays thin. One more answers for this mod's pack at the single accessor every read of a
@@ -24,6 +24,10 @@ namespace InFalsusChartLoader
     /// custom songs' difficulties at the game's own state query for one song and one difficulty:
     /// every difficulty of a custom song is open, and one the `if` file left chartless is the game's
     /// own "this song has no chart here" — see `DifficultyDetour`, in the song-select's own file.
+    /// One hides the results screen's unlock-progress container for a custom song: the game fills it
+    /// from the save's own progression, which has nothing to say about a difficulty this mod already
+    /// answers as open, so the detour takes the container's own hide branch. See
+    /// `ResultsUnlockDetour`.
     /// Two more answer nothing: they count and report, because whether the game took each step cannot be read off
     /// the decompilation with confidence and one number per step settles it. Two do neither — each
     /// changes what the game does around a call it is making, so that a difficulty change reaches
@@ -99,6 +103,12 @@ namespace InFalsusChartLoader
     /// them, <b>`EncounterResults.UpdateEncounterResult`</b> — the settlement's other write, the
     /// encounter ("回想") result — is dropped for a custom play rather than redirected, so nothing
     /// of it is kept anywhere. See <see cref="CustomResults"/>.
+    /// </description></item>
+    /// <item><description>
+    /// <b>`DifficultyUnlockContainer._GB`</b> — the results screen's unlock-progress container. For a
+    /// custom song the detour hands the game's own method its "none" difficulty, which is the
+    /// method's own hide branch: the bar is hidden and its progress is not refreshed for a result the
+    /// mod keeps out of the save. See <c>ResultsUnlockHook</c>.
     /// </description></item>
     /// </list>
     /// <para>
@@ -219,6 +229,7 @@ namespace InFalsusChartLoader
             Count(InstallDifficultyState());
             Count(InstallPackVisual());
             Count(InstallCustomResults());
+            Count(InstallResultsUnlock());
             Count(InstallPlayGate());
             Count(InstallSceneSwitch());
 
@@ -234,6 +245,7 @@ namespace InFalsusChartLoader
         {
             DetachSceneSwitch();
             DetachPlayGate();
+            DetachResultsUnlock();
             DetachCustomResults();
             DetachPackVisual();
             DetachDifficultyState();
@@ -305,6 +317,7 @@ namespace InFalsusChartLoader
             ResultReadFull,
             ResultUpdate,
             EncounterResult,
+            ResultsUnlock,
             PlayGate,
             SceneSwitch,
         }
@@ -363,6 +376,7 @@ namespace InFalsusChartLoader
             Hook.ResultReadFull => "GameResultsV4.TryGetResult(song, full)",
             Hook.ResultUpdate => "GameResultsV4.TryUpdate",
             Hook.EncounterResult => "EncounterResults.UpdateEncounterResult",
+            Hook.ResultsUnlock => "DifficultyUnlockContainer._GB",
             Hook.PlayGate => "SongSelectScene._sN",
             Hook.SceneSwitch => "CoreScene._CB.MoveNext",
             _ => "(unknown hook)",
