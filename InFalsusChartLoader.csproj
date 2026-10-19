@@ -8,14 +8,11 @@
     <IsPackable>false</IsPackable>
     <AssemblyName>InFalsusChartLoader</AssemblyName>
 
-    <!-- The DLL's identity. NOT what MelonLoader displays; that is ModCore.Version, used by the
-         MelonInfo attribute in Source/Mod/Entry.Melon.cs. Keep the two in step by hand. -->
+    <!-- The assembly's version number. -->
     <AssemblyVersion>0.2.1</AssemblyVersion>
   </PropertyGroup>
 
-  <!-- The detour shim and the entry point select their loader by this, and the references below
-       follow the same split: `Managed/MelonLoader` and `Managed/BepInEx` each hold one loader's
-       compile-time dependencies (the rest of those folders is ignored by .gitignore). -->
+  <!-- Which loader this build targets, and the define it compiles with. -->
   <PropertyGroup>
     <Loader Condition="'$(Loader)' == ''">MelonLoader</Loader>
     <LoaderDir Condition="'$(Loader)' == 'MelonLoader'">Managed\MelonLoader</LoaderDir>
@@ -24,9 +21,7 @@
     <DefineConstants Condition="'$(Loader)' == 'BepInEx'">$(DefineConstants);BEPINEX</DefineConstants>
   </PropertyGroup>
 
-  <!-- The SDK would add six more assembly attributes: Company, Configuration, FileVersion,
-       InformationalVersion, Product, Title. Nothing reads any of them. Leaving them off keeps six
-       TypeRefs, six MemberRefs and their version strings out of every Release build. -->
+  <!-- Assembly attributes the mod does not use. -->
   <PropertyGroup>
     <GenerateAssemblyCompanyAttribute>false</GenerateAssemblyCompanyAttribute>
     <GenerateAssemblyConfigurationAttribute>false</GenerateAssemblyConfigurationAttribute>
@@ -36,16 +31,14 @@
     <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
   </PropertyGroup>
 
-  <!-- NativeHook / ldftn / function pointers. -->
+  <!-- Native function pointers. -->
   <PropertyGroup>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <PlatformTarget>x64</PlatformTarget>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
-  <!-- Release is the build that gets installed, so it carries no symbols. The BepInEx names are
-       separate configurations, so the SDK's Debug/Release defaults do not follow them: DEBUG and
-       the optimisation level are set here, explicitly. -->
+  <!-- Release builds carry no symbols; the BepInEx configurations set DEBUG and optimisation explicitly. -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release' Or '$(Configuration)' == 'BepInExRelease'">
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
@@ -68,20 +61,11 @@
     <Compile Remove="Source\Mod\Entry.Melon.cs" Condition="'$(Loader)' == 'BepInEx'" />
     <Compile Remove="Source\Mod\Entry.BepInEx.cs" Condition="'$(Loader)' != 'BepInEx'" />
 
-    <!-- The probes are not in a Release build at all: not the calls, not the helpers, not the
-         strings. Their call sites are wrapped in `#if DEBUG`, so THIS REMOVAL AND THOSE GUARDS HAVE
-         TO STAY IN STEP. build.bat asserts the result after every Release build. -->
+    <!-- The probes are Debug-only. -->
     <Compile Remove="Source\Probe\**\*.cs" Condition="'$(Configuration)' == 'Release' Or '$(Configuration)' == 'BepInExRelease'" />
   </ItemGroup>
 
-  <!-- Build references. The MelonLoader build's all live in Managed/ and are committed, so a clone
-       builds with nothing else to do; after a game update the Cpp2IL ones need refreshing (README).
-       The BepInEx build reads its own installed copies, because the two loaders generate slightly
-       different interop assemblies and the mod must compile against the one it will run with.
-
-       Plain <Reference> rather than <PackageReference> on purpose: a package reference pulls
-       MelonLoader's whole dependency graph in behind it, which writes a 65 KB .deps.json next to a
-       40 KB mod for MelonLoader's load context to read. Only the assembly is wanted. -->
+  <!-- Compile-time references; the loader supplies them at runtime. -->
   <ItemGroup>
     <Reference Include="MelonLoader" Condition="'$(Loader)' == 'MelonLoader'">
       <HintPath>$(LoaderDir)\MelonLoader.dll</HintPath>
@@ -94,9 +78,7 @@
       <Private>false</Private>
     </Reference>
 
-    <!-- Il2CppSystem.Type comes back from the generated-type lookups, and UnityEngine.CoreModule
-         carries Texture2D / ImageConversion for the custom jackets. The alias keeps this mod's
-         own types unambiguous against the interop ones. -->
+    <!-- Interop and Unity types the mod builds against. -->
     <Reference Include="$(LoaderDir)\Il2Cppmscorlib.dll">
       <Private>false</Private>
     </Reference>
@@ -107,8 +89,7 @@
     </Reference>
   </ItemGroup>
 
-  <!-- BepInEx 6 IL2CPP, from Managed/BepInEx. `Private=false` for the same reason as above: the
-       loader supplies these at runtime. -->
+  <!-- BepInEx 6 IL2CPP references. -->
   <ItemGroup Condition="'$(Loader)' == 'BepInEx'">
     <Reference Include="BepInEx.Core">
       <HintPath>$(LoaderDir)\BepInEx.Core.dll</HintPath>

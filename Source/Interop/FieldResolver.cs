@@ -4,29 +4,13 @@ using System.Reflection;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// Where a field sits, asked of the running game rather than copied from a dump.
-    ///
-    /// The Cpp2IL interop assembly keeps a hidden static field per field holding the runtime
-    /// `FieldInfo*`, and `il2cpp_field_get_offset` turns that into the offset. The constants in
-    /// <see cref="Offsets"/> are what the mod was written against; these are what the game says, and
-    /// a disagreement is reported so that a game update shows up as a line in the log rather than as
-    /// a value read from the wrong place.
-    ///
-    /// Fields only. The IL2CPP container layout this mod also relies on has no name to look up and
-    /// is not resolved here.
-    /// </summary>
+    /// <summary>Resolves a game field's offset by name.</summary>
     internal static class FieldResolver
     {
         private const BindingFlags AnyField =
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
 
-        /// <summary>
-        /// The two pointers every IL2CPP object starts with — its class and its monitor. A value
-        /// type's field offsets are reported relative to that header, because that is where they sit
-        /// once the struct is boxed; the offsets this mod uses are relative to the struct itself.
-        /// The number lives in `Offsets.Runtime` with the rest of the runtime's layout.
-        /// </summary>
+        /// <summary>The class and monitor pointers every IL2CPP object starts with.</summary>
         private const int ObjectHeader = Offsets.Runtime.ObjectHeader;
 
         private static int _asked;
@@ -36,27 +20,7 @@ namespace InFalsusChartLoader
         internal static string Stats() =>
             $"offsets asked={_asked} unresolved={_unresolved}";
 
-        /// <summary>
-        /// A field's offset, asked of the running game by name, or <b>-1</b> when the name cannot be
-        /// answered.
-        ///
-        /// <para>
-        /// -1 is not a value: every field sits at or after the object's header, so a caller that
-        /// fails to check reads the header — a plausible-looking number from the wrong place, which
-        /// is exactly how a moved field used to fail.
-        /// </para>
-        /// <para>
-        /// There is <b>no number in this signature</b>, and that is deliberate. It used to take the
-        /// constant this build was reversed with and return it when the name lookup failed — not a
-        /// safety net: the failure of the lookup is the only signal that the game has renamed
-        /// something, and the stale number destroyed it, so the run carried on and the symptom
-        /// surfaced somewhere else. A number in the source is also a game offset that nothing keeps
-        /// true: it cannot be resolved (it is not a name) and it is not measured, so it is exactly
-        /// the thing a mod should not contain. A miss is reported here, by name, in every build, and
-        /// every caller must treat it as "this chain is off" the way a hook that does not resolve is
-        /// simply not installed.
-        /// </para>
-        /// </summary>
+        /// <summary>A field's offset by name, or -1 when the name cannot be resolved.</summary>
         internal static int Field(string typeName, string fieldName)
         {
             if (!TryField(typeName, fieldName, out int offset))
@@ -70,24 +34,11 @@ namespace InFalsusChartLoader
             return offset;
         }
 
-        /// <summary>
-        /// A field's offset, or -1 when the name cannot be resolved.
-        ///
-        /// For trying a name that may not exist — a generic type's simple name is generated and not
-        /// something to assume — where the caller is asking a question and can take "no" for an
-        /// answer, rather than the "this chain is off" that <see cref="Field"/> reports.
-        /// </summary>
+        /// <summary>A field's offset by name, or -1 when it may not exist.</summary>
         internal static int Lookup(string typeName, string fieldName) =>
             TryField(typeName, fieldName, out int offset) ? offset : -1;
 
-        /// <summary>
-        /// A named member of an enum, as its value, or <b>-1</b> when the name cannot be answered.
-        ///
-        /// Asked of the generated type rather than written down: an enum member's value is the
-        /// game's, and a number copied into this mod would outlive the build it was read from.
-        /// -1 is not a value any of this game's enums uses, so a caller that fails to check is
-        /// refusing on a number it cannot mistake for a real one.
-        /// </summary>
+        /// <summary>An enum member's value by name, or -1 when it cannot be resolved.</summary>
         internal static int EnumValue(string typeName, string memberName)
         {
             try
@@ -102,8 +53,6 @@ namespace InFalsusChartLoader
                                                           BindingFlags.Public | BindingFlags.Static);
                         if (member == null) continue;
 
-                        // The metadata constant, which does not run the type's initialiser and
-                        // does not box a value out of a static block.
                         object raw = member.GetRawConstantValue();
                         if (raw == null) continue;
 
@@ -126,21 +75,7 @@ namespace InFalsusChartLoader
 
         private static readonly Dictionary<string, int> Measured = new Dictionary<string, int>();
 
-        /// <summary>
-        /// The size of an IL2CPP array's elements, taken from the array itself, or <b>-1</b> when it
-        /// cannot be measured — the same "no answer" as <see cref="Field"/>, and for the same
-        /// reason: a stride that was not measured is a stride nothing may walk by.
-        ///
-        /// A struct's size is not a field, so it has no name to look up — but an array of them
-        /// carries it: its byte length is its element count times the element size. This is the
-        /// one number a game update that changes a struct's shape cannot hide, which is why no
-        /// stride in this mod is trusted to a constant — and why this takes no expected value
-        /// either: a measurement is the only thing that may answer here.
-        ///
-        /// Only a measurement is remembered; a miss is not cached here because the array it was
-        /// asked about may not be the one a later caller asks about — the callers that cannot go on
-        /// without an answer latch their own failure instead.
-        /// </summary>
+        /// <summary>The element size of an IL2CPP array, or -1 when it cannot be read.</summary>
         internal static int ElementSize(IntPtr array, string label)
         {
             if (Measured.TryGetValue(label, out int known)) return known;
@@ -180,10 +115,7 @@ namespace InFalsusChartLoader
             return -1;
         }
 
-        /// <summary>
-        /// The class pointer for a generated type, so a class can be reached by name rather than
-        /// through the address of the slot that happens to hold it.
-        /// </summary>
+        /// <summary>The class pointer for a generated type.</summary>
         internal static IntPtr ClassPointer(string typeName)
         {
             if (!InteropTypeIndex.ByName().TryGetValue(typeName, out List<Type> types))
@@ -210,29 +142,14 @@ namespace InFalsusChartLoader
             return IntPtr.Zero;
         }
 
-        /// <summary>
-        /// A class's statics block — where its static fields live, at the offsets
-        /// <see cref="Field"/> reports for them.
-        /// </summary>
+        /// <summary>A class's statics block.</summary>
         internal static IntPtr Statics(IntPtr klass)
         {
             if (!Memory.LooksLikeObject(klass)) return IntPtr.Zero;
             return Memory.Ptr(klass + Offsets.Runtime.ClassStatics);
         }
 
-        /// <summary>
-        /// How many bytes one of a value type takes — asked of the game, because a struct's size is
-        /// not a field and there is no name for it to be resolved by.
-        ///
-        /// A value type's class answers with the size one has once boxed, and the runtime's own value
-        /// return takes the object header off that same number before it allocates for the value
-        /// (`il2cpp_runtime_invoke`, its value-type branch: `instance_size - 16`). Measured in this
-        /// build: `il2cpp_class_instance_size` reads `klass + 248`.
-        ///
-        /// <b>-1</b> when the type is not a value type this mod can reach — a size is not a thing to
-        /// guess at, and a caller that gets -1 must refuse rather than carry on with a buffer that is
-        /// the wrong length.
-        /// </summary>
+        /// <summary>The size of a value type, or -1 when it cannot be resolved.</summary>
         internal static int ValueSize(string typeName)
         {
             IntPtr klass = ClassPointer(typeName);
@@ -259,11 +176,6 @@ namespace InFalsusChartLoader
                     IntPtr info = (IntPtr)pointer.GetValue(null);
                     if (info == IntPtr.Zero) continue;
 
-                    // Whether to correct for the object header is asked of **IL2CPP**, not of the
-                    // generated `System.Type`: Cpp2IL emits the game's structs as classes, so
-                    // `Type.IsValueType` is false for exactly the types that need the correction — and
-                    // the failure is silent and uniform (every field of every struct comes back one
-                    // object header too high), which reads like "the game moved everything".
                     offset = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(info) -
                              (IsValueType(ClassOf(type)) ? ObjectHeader : 0);
                     return true;
@@ -277,9 +189,7 @@ namespace InFalsusChartLoader
             return false;
         }
 
-        /// <summary>
-        /// The IL2CPP class of a generated `System.Type`, or zero.
-        /// </summary>
+        /// <summary>The IL2CPP class of a generated <see cref="Type"/>.</summary>
         private static IntPtr ClassOf(Type type)
         {
             try
@@ -292,18 +202,11 @@ namespace InFalsusChartLoader
             }
             catch (Exception)
             {
-                return IntPtr.Zero;      // a generic definition has no class; nothing to correct for
+                return IntPtr.Zero;
             }
         }
 
-        /// <summary>
-        /// Whether an IL2CPP class is a value type — a struct's field offsets are reported against the
-        /// object header, because that is where they sit once the struct is boxed, while every offset
-        /// this mod uses is relative to the struct itself.
-        ///
-        /// Asked the way IL2CPP defines it rather than through the generated type: a value type's
-        /// parent is <c>System.ValueType</c>.
-        /// </summary>
+        /// <summary>Whether an IL2CPP class is a value type.</summary>
         private static bool IsValueType(IntPtr klass)
         {
             IntPtr parent = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_parent(klass);
@@ -312,9 +215,7 @@ namespace InFalsusChartLoader
             return Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_name_(parent) == "ValueType";
         }
 
-        /// <summary>
-        /// The generated `NativeFieldInfoPtr_&lt;name&gt;` static, which holds the `FieldInfo*`.
-        /// </summary>
+        /// <summary>The generated `NativeFieldInfoPtr_` static for a field.</summary>
         private static FieldInfo PointerField(Type type, string fieldName)
         {
             for (Type t = type; t != null; t = t.BaseType)
@@ -323,8 +224,6 @@ namespace InFalsusChartLoader
                 if (f != null) return f;
             }
 
-            // A field the generator did not emit a pointer for still has one on some builds under the
-            // declaring type's own name; the assembly-wide search above covers the common case.
             return null;
         }
     }

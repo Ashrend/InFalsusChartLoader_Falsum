@@ -2,44 +2,19 @@ using System;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// The two things a new pack needs beyond its entry in the pack list.
-    ///
-    /// <para>
-    /// A pack is a row of materials and a reverse lookup. The materials come from a table indexed by
-    /// the pack's own id, so a pack whose id is past the end of that table does not fail — it quietly
-    /// wears the first pack's clothes. The reverse lookup is what answers "which pack is this song
-    /// in", and it is built from the pack list by a method the game calls when its data loads, which
-    /// is before this mod has added anything.
-    /// </para>
-    /// <para>
-    /// Both are the same shape of problem as the song list, and take the same kind of answer: make
-    /// the game's own table big enough, and make the game's own derivation run again.
-    /// </para>
-    /// </summary>
+    /// <summary>The pack's row of visuals and its reverse lookup.</summary>
     internal static unsafe class PackSetup
     {
-        // No offsets are written in this file: every one is asked by name (`ResolveFields`), and each
-        // stays at `Offsets.Unresolved` (-1) until it answers. See `Offsets` for why a game offset
-        // is never a number here.
-
-        /// <summary>`PackSelectSceneAssets.packToAssets` — resolved by name, see `ResolveFields`.</summary>
+        /// <summary>`PackSelectSceneAssets.packToAssets`.</summary>
         private static int PackAssetsTable = Offsets.Unresolved;
 
-        /// <summary>`DataAccess._NAb` — resolved with the rest, see `ResolveFields`.</summary>
+        /// <summary>`DataAccess._NAb`.</summary>
         private static int PackAssetsField = Offsets.Unresolved;
 
-        /// <summary>`DataAccess._mAb` — the localisation table, resolved with the rest.</summary>
+        /// <summary>`DataAccess._mAb` — the localisation table.</summary>
         private static int StringMappingField = Offsets.Unresolved;
 
-        /// <summary>`PackData._SkA()`, which rebuilds the song-to-pack lookup.</summary>
-        // (`PackData._SkA` — the lookup rebuild — is called by name; no RVA is kept for it.)
-
-        /// <summary>
-        /// The pack visuals, or false while the game has not loaded them — or when a name this file
-        /// reads by is not in this build, in which case <see cref="ResolveFields"/> has already said
-        /// which one and nothing here may be touched.
-        /// </summary>
+        /// <summary>The pack visuals, or false while the game has not loaded them.</summary>
         internal static bool TryGetVisuals(out IntPtr packAssets)
         {
             packAssets = IntPtr.Zero;
@@ -56,15 +31,7 @@ namespace InFalsusChartLoader
             return Memory.LooksLikeObject(packAssets);
         }
 
-        /// <summary>
-        /// Gives the new pack a row of its own in the visual table, wearing the In Falsus pack's look.
-        ///
-        /// The `if` file says nothing about how a pack looks, so the row is a copy of a shipped one
-        /// rather than an invention. The whole row is copied, not the first material: a
-        /// `SongSelectPackAssets` is sixteen material references — the large and small cards, their
-        /// hover and completed states, the backing image, the outline — and a row that carries one of
-        /// them is a row of nulls, which draws as nothing rather than as the pack it was copied from.
-        /// </summary>
+        /// <summary>Gives the new pack a row in the visual table.</summary>
         internal static bool ExtendVisuals(IntPtr packAssets, int packIndex)
         {
             IntPtr table = Memory.Ptr(packAssets + PackAssetsTable);
@@ -95,18 +62,9 @@ namespace InFalsusChartLoader
                 return false;
             }
 
-            // Which row it wears: the first one the game draws — the In Falsus pack's — as long as
-            // that row has something to draw with. `Hooks.SourceRow` owns that question, and the row
-            // accessor (`PackVisualHook.PackRowDetour`) asks it too and sends our index to the same
-            // row, so this copy is what a reader that does not go through the accessor sees — a
-            // second copy of the same answer, not a substitute for a missing one.
             int from = Hooks.SourceRow(table, count, stride);
             if (from < 0)
             {
-                // No row the game draws exists, so there is nothing to copy and nothing is. Row
-                // zero used to be copied here, which put the reserved pack's row — one the game
-                // never draws — behind the custom pack, and said so only in a Debug line. The grown
-                // table is dropped unpublished instead, and `NoRow` carries the consequence.
                 Diagnostics.Warn("no shipped pack row has a material to copy");
                 NoRow();
                 return false;
@@ -128,12 +86,7 @@ namespace InFalsusChartLoader
 
         private static bool _noRowReported;
 
-        /// <summary>
-        /// One line, once, for every way the custom pack can end up without a row of visuals of its
-        /// own — the step that failed is the Debug line where it happened, and this is the
-        /// consequence a release keeps, because the pack screen drawing the pack wrong is something
-        /// the player can see.
-        /// </summary>
+        /// <summary>Reports that the custom pack has no row of visuals, once.</summary>
         internal static void NoRow()
         {
             if (_noRowReported) return;
@@ -142,23 +95,10 @@ namespace InFalsusChartLoader
                                     "whatever this build draws for it");
         }
 
-        /// <summary>
-        /// `PackSelectSceneAssets.packToAssets`'s offset, resolved by name — asked for by the row keep,
-        /// which runs every frame and must not re-ask the field resolver for it.
-        /// </summary>
+        /// <summary>The pack visuals table's offset.</summary>
         internal static int VisualsTableOffset => PackAssetsTable;
 
-        /// <summary>
-        /// Rebuilds the game's song-to-pack lookup so it knows the new songs belong to the new pack.
-        ///
-        /// The game derives it from the pack list, and it did that before this mod appended anything.
-        /// Its misses are tolerated — an unknown song reads as "in no pack" rather than as an error —
-        /// so leaving it stale would not crash, it would just make every reverse lookup about a custom
-        /// song answer nothing, which is the kind of wrong that is hard to notice and hard to trace.
-        ///
-        /// Reached by name because it is private: this is the game's own rebuild, not a second copy of
-        /// its rules, and a second copy is exactly what would drift from the first.
-        /// </summary>
+        /// <summary>Rebuilds the game's song-to-pack lookup.</summary>
         internal static void RefreshLookup(IntPtr packData)
         {
             IntPtr klass = FieldResolver.ClassPointer("PackData");
@@ -182,16 +122,7 @@ namespace InFalsusChartLoader
         /// <summary>`DynamicStringMapping.packIdTypeMapping`.</summary>
         private static int PackIdTypeMapping = Offsets.Unresolved;
 
-        /// <summary>
-        /// The three mappings a song's own card text comes from.
-        ///
-        /// The third is the jacket's illustrator. It is a different mapping from the artist because the
-        /// game shows them in different places, and it is keyed by the same `SongId` — so the write is
-        /// the same call, against the field the dump lists as `jacketIllustratorNameTypeMapping`.
-        ///
-        /// Read only inside <see cref="SetSongText"/>, after <see cref="ResolveFields"/> — never at a
-        /// call site, where the read happens before the fields have been asked for (see `SongText`).
-        /// </summary>
+        /// <summary>The three song text mappings.</summary>
         private static int SongTitleTypeMapping = Offsets.Unresolved;
         private static int SongArtistTypeMapping = Offsets.Unresolved;
         private static int SongIllustratorTypeMapping = Offsets.Unresolved;
@@ -200,28 +131,12 @@ namespace InFalsusChartLoader
 
         private static bool _fieldsMissing;
 
-        /// <summary>
-        /// Every field offset this file uses, asked of the running game by name, once, and whether
-        /// all of them answered.
-        ///
-        /// None of these is a property of the mod — they are properties of *this build of the game*,
-        /// and a patch moves them without anything here failing loudly (a stale offset reads a
-        /// plausible-looking value from the wrong place). So a name that cannot be resolved is not
-        /// papered over with the constant this build was reversed with: it is reported by
-        /// <see cref="FieldResolver.Field"/>, this answers false and latches, and every write that
-        /// needs one of them is skipped — the pack keeps the game's own visuals and text, which is
-        /// visible, where a write through a wrong offset would not be.
-        /// </summary>
+        /// <summary>Resolves the fields this file uses.</summary>
         private static bool ResolveFields()
         {
             if (_fieldsResolved) return true;
             if (_fieldsMissing) return false;
 
-            // Not a failure: the interop store may not be up yet, and the answer is re-asked while
-            // it is not — the same rule `Selection.Fields` and `SongCatalog.TryGetAssets` follow.
-            // The latch below belongs after this line, not before it: `FieldResolver.Field` cannot
-            // tell "not yet" from "renamed", so asking the names before any class is in hand would
-            // turn a retryable state into a permanent miss.
             if (FieldResolver.ClassPointer("DataAccess") == IntPtr.Zero) return false;
 
             PackAssetsTable = FieldResolver.Field("PackSelectSceneAssets", "packToAssets");
@@ -232,8 +147,6 @@ namespace InFalsusChartLoader
             SongIllustratorTypeMapping = FieldResolver.Field("DynamicStringMapping",
                                                              "jacketIllustratorNameTypeMapping");
 
-            // The two the pack's own objects carry, asked here rather than at each use: this is the
-            // only place either is wanted, and asking inside a loop would report a miss inside a loop.
             PackAssetsField = FieldResolver.Field("DataAccess", "_NAb");
             StringMappingField = FieldResolver.Field("DataAccess", "_mAb");
 
@@ -251,15 +164,7 @@ namespace InFalsusChartLoader
             return true;
         }
 
-        /// <summary>
-        /// `DynamicStringMapping.TextMappingValues` — **five string pointers in a row**, one per
-        /// language, so every slot is `index × pointer size` and the struct is five of them.
-        ///
-        /// Written this way rather than as literals because what fixes the layout is the pointer size,
-        /// which belongs to the runtime and not to this game. The third slot is the one language this
-        /// mod does not write. (The type has no declaration of its own to look up in the dump, which is
-        /// why it is not resolved by name like the fields above.)
-        /// </summary>
+        /// <summary>The five language slots of a `TextMappingValues`.</summary>
         private static readonly int TextMappingValuesSize = 5 * IntPtr.Size;
 
         private static readonly int ValueEnglish = 0 * IntPtr.Size;
@@ -273,23 +178,7 @@ namespace InFalsusChartLoader
         /// </summary>
         private static int _mappingOffset = int.MinValue;
 
-        /// <summary>
-        /// Gives the pack a name.
-        ///
-        /// There is no field for it. A pack's title comes out of the same localisation table every
-        /// other string in the game comes from, looked up by the pack's id — `PackInfo` itself has
-        /// only an id, a slug and a song list. Without an entry the card reads the table's own
-        /// miss value, which is the literal text "Missing String Mapping": there is no fallback to
-        /// the slug or to anything else.
-        /// </summary>
-        /// <summary>
-        /// Which write it is, for the one place the distinction is needed: one that could not be made.
-        ///
-        /// An enum rather than the sentence it replaced, for the reason <see cref="Hooks.Hook"/> gives:
-        /// the value travels through <see cref="SetText"/>, which does real work and therefore cannot
-        /// be `[Conditional("DEBUG")]`, so a string argument to it is a string in every Release build.
-        /// The two sentences now live in <see cref="Name"/>, which that build does not carry.
-        /// </summary>
+        /// <summary>Gives the pack a name.</summary>
         private enum TextWhat { PackName, SongText }
 
         internal static bool SetPackName(int packId, string name)
@@ -301,28 +190,10 @@ namespace InFalsusChartLoader
             return SetText(PackIdTypeMapping, packId, name, TextWhat.PackName);
         }
 
-        /// <summary>
-        /// Which of the table's song lookups a write is aimed at.
-        ///
-        /// An enum rather than the field's value, because a field read at the call site is read
-        /// <b>before</b> <see cref="SetText"/> asks the game for it: in a Release build the first
-        /// song-text write of a run passed -1 — the fields start unresolved — and was dropped,
-        /// aimed one byte before the mapping object. A Debug build only got away with it because a
-        /// probe asks for the pack's visuals early (see <c>ModCore.Update</c>). Taking the
-        /// name of the lookup and reading the field after <see cref="ResolveFields"/> makes the
-        /// order impossible to get wrong.
-        /// </summary>
+        /// <summary>Which text write this is.</summary>
         internal enum SongText { Title, Artist, Illustrator }
 
-        /// <summary>
-        /// Gives a song a title or an artist, in the table the song list reads them from.
-        ///
-        /// The cards do **not** read `SongInfo`'s own override fields — that was this mod's first
-        /// guess and it is wrong for the card that is actually drawn. Read from the call site
-        /// (`LargeSongCard._OS`): the title is `Strings.GetDynamic&lt;SongId&gt;(1, id)` and the artist
-        /// is the same call with `2`, both of them entries in this table. So a song with no entry here
-        /// has no title on its card, whichever fields the song record carries.
-        /// </summary>
+        /// <summary>Gives a song a title, artist, or illustrator.</summary>
         internal static bool SetSongText(SongText which, int songId, string text)
         {
             if (!ResolveFields()) return false;
@@ -334,12 +205,9 @@ namespace InFalsusChartLoader
             return SetText(mappingField, songId, text, TextWhat.SongText);
         }
 
-        /// <summary>The one write, shared by the pack's name and a song's title and artist.</summary>
+        /// <summary>The one text write.</summary>
         private static bool SetText(int mappingField, int id, string text, TextWhat what)
         {
-            // Both callers above resolve before they read their field, so this is belt and braces:
-            // it is what makes a future caller that forgets fail closed — nothing written, and the
-            // miss reported where it was asked — rather than aim a write at -1.
             if (!ResolveFields()) return false;
 
             IntPtr klass = FieldResolver.ClassPointer("DataAccess");
@@ -374,21 +242,11 @@ namespace InFalsusChartLoader
 
             if (!Insert(table, id, text)) return false;
 
-            // Named by the table it went into, not by the first caller of this helper: the pack's name
-            // and a song's title are written by the same three lines, and a log that calls both of them
-            // "pack name" is how a run cannot tell whether a write landed where it was aimed.
             Diagnostics.Info($"localisation +0x{mappingField:X}: entry {id} set to '{text}'");
             return true;
         }
 
-        /// <summary>
-        /// Says which write could not be made, and where the lookup stopped, in a Debug build only.
-        ///
-        /// This one <b>can</b> be `[Conditional("DEBUG")]` — it only reports — and that is what keeps
-        /// the message at the call site from shipping: a conditional call takes its arguments with it.
-        /// The name still has to come from <see cref="Name"/>, because this body is compiled either
-        /// way and a literal in it would ship where the message does not.
-        /// </summary>
+        /// <summary>Says which write could not be made.</summary>
         [System.Diagnostics.Conditional("DEBUG")]
         private static void NotWritten(TextWhat what, string where) =>
             Diagnostics.Warn($"{where}; {Name(what)}");
@@ -404,18 +262,7 @@ namespace InFalsusChartLoader
 #endif
         }
 
-        /// <summary>
-        /// Where `StringTypeMapping&lt;T&gt;.Mapping` sits inside the instance being read — asked of
-        /// that instance's <b>own class</b>, which is the inflated generic the game is actually using
-        /// and therefore the only place the field has a real offset.
-        ///
-        /// The dump cannot answer this one: `StringTypeMapping&lt;T&gt;` is generic, so its fields are
-        /// rendered with no layout there, and every candidate this mod can look up by name is a generic
-        /// definition whose fields have no layout. Asking the instance's class is the same route
-        /// `CustomResults` takes for the save container, which is generic for the same reason. The
-        /// constant this used to fall back to is gone: a name that cannot be asked leaves this at -1
-        /// and the write is not made (see <see cref="ResolveFields"/>).
-        /// </summary>
+        /// <summary>Where the mapping field sits.</summary>
         private static int MappingOffset(IntPtr typeMapping)
         {
             if (_mappingOffset != int.MinValue) return _mappingOffset;
@@ -435,11 +282,6 @@ namespace InFalsusChartLoader
                 }
             }
 
-            // The old route, kept as a second chance for a build that declares a non-generic subclass
-            // somewhere in the index: a name found there is still a name, and still not a number
-            // typed into this file. A generic definition is skipped — its fields have no layout, and
-            // reflection refuses to read them (`ContainsGenericParameters`), which is why this walk
-            // never answered on the build it was written for.
             foreach (var entry in InteropTypeIndex.ByName())
             {
                 if (!entry.Key.Contains("StringTypeMapping")) continue;
@@ -458,19 +300,7 @@ namespace InFalsusChartLoader
             return _mappingOffset = -1;
         }
 
-        /// <summary>
-        /// One entry in a `Dictionary&lt;PackId, TextMappingValues&gt;`.
-        ///
-        /// Going through the runtime is the only way to reach a dictionary the game owns without
-        /// reimplementing its hashing. Both arguments are value types, so both are passed as
-        /// addresses rather than boxes — see <see cref="JacketFactory.Invoke"/> for why, and for what
-        /// boxing one costs: an entry filed under the low bytes of a class pointer instead of its
-        /// key. The entry is written with `set_Item`, not `Add`, so that running twice is the same as
-        /// running once.
-        ///
-        /// The same text goes in every language the table can be read in. Korean is left empty on
-        /// purpose: the table's own reader never consults it.
-        /// </summary>
+        /// <summary>Writes one entry in the text table.</summary>
         private static unsafe bool Insert(IntPtr table, int packId, string name)
         {
             ushort id = (ushort)packId;

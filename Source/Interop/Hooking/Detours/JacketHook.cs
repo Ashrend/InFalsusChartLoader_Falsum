@@ -11,44 +11,11 @@ namespace InFalsusChartLoader
 
         private const string Namespace = "ifapp.Game.Common";
 
-        // `_MIA<T>` is the shared body every reference-type instantiation goes through, and it is what
-        // the card call sites (`SmallSongCard._tS`, `LargeSongCard._OS`) call. It is resolved through
-        // the runtime (see MethodResolver.ByRuntime) because reflection cannot see a generic's field —
-        // and no address is kept for it: see MethodResolver.ByName for why there is no RVA fallback.
-
-        /// <summary>`SongData._ZOA(in SongChartInfo, bool large)` — the *other* reference getter.</summary>
-
-        /// <summary>
-        /// `GameplayBackgrounds._UmA(GameplayBackground)` — the in-play background, which the `if`
-        /// file's picture also stands in for.
-        ///
-        /// The name is `_UmA`, not the `_zDA` the demo build's source suggests: demo `$`-names and
-        /// shipped `_`-names are not one mapping, and the class has exactly one method that answers
-        /// with a reference. Resolved by name, like every other method here.
-        /// </summary>
-
-        /// <summary>
-        /// `AssetReferenceT&lt;Material&gt; SongData._apA(in SongInfo songInfo, bool large)`
-        ///
-        /// Four arguments, and the two that are easy to get backwards are the first two: `rcx` is the
-        /// `SongData` the method was called on, and the song record is `rdx` — a pointer to it,
-        /// because a 64-byte struct goes by address. Reading the song out of `rcx` instead lands in
-        /// `SongData`'s own header and dereferences whatever is there.
-        ///
-        /// The record's base name is what identifies the song, and this is the only place in the
-        /// jacket path where the song is still known.
-        /// </summary>
+        /// <summary>`SongData._apA` — the song's jacket reference.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate IntPtr ApAFn(IntPtr songData, IntPtr songInfo, byte large, IntPtr methodInfo);
 
-        /// <summary>
-        /// `static T _MIA&lt;T&gt;(GameObject, ref AddressableHandleAutoReleaser, AssetReferenceT&lt;T&gt;, bool)`
-        ///
-        /// A shared-generic: one address serves every `T`, so the hook sees loads that have nothing to
-        /// do with jackets and must let them through untouched. It is the reference argument that
-        /// tells the two apart, which is why the pair is matched by identity and not by the fact that
-        /// something is pending.
-        /// </summary>
+        /// <summary>`_MIA<T>` — the non-blocking loader.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate IntPtr MiaFn(IntPtr owner, IntPtr releaser, IntPtr reference, byte forceReload,
                                       IntPtr methodInfo);
@@ -58,36 +25,11 @@ namespace InFalsusChartLoader
         private static NativeHook<MiaFn> _mia;
         private static MiaFn _miaTramp;
 
-        /// <summary>
-        /// `AssetReferenceT&lt;Material&gt; SongData._ZOA(in SongChartInfo chartInfo, bool large)`
-        ///
-        /// The other half of "which reference holds a jacket", and the one the loading screen uses:
-        /// it is keyed by the per-difficulty record rather than by the song. Same ABI as `_apA` —
-        /// `rcx` the `SongData`, `rdx` a pointer to the record, `r8b` the size flag — because both
-        /// take a record pointer and a bool.
-        ///
-        /// It looks its reference up in a different table (`SongData._efb`, keyed by the chart's own
-        /// id) and falls back to the game's default jacket when the id is not there — which is
-        /// exactly what a custom chart got before this hook existed: the loading screen drew the
-        /// fallback while the song-select card, which goes through `_apA`, drew ours.
-        /// </summary>
+        /// <summary>`SongData._ZOA` — the chart's jacket reference.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate IntPtr ZoaFn(IntPtr songData, IntPtr chartInfo, byte large, IntPtr methodInfo);
 
-        /// <summary>
-        /// `static T _LIA&lt;T&gt;(GameObject owner, AssetReferenceT&lt;T&gt; reference)`
-        ///
-        /// The second of the two loaders a jacket can go through. The game has exactly two, and both
-        /// end in the same instance method that touches Addressables:
-        ///
-        ///   `_MIA&lt;T&gt;(GameObject, ref AddressableHandleAutoReleaser, AssetReferenceT&lt;T&gt;, bool)`
-        ///   `_LIA&lt;T&gt;(GameObject, AssetReferenceT&lt;T&gt;)`
-        ///
-        /// `_LIA` is the blocking one, and it is what every jacket request outside the song-select
-        /// cards uses — the loading/transition screen, the hub, the results screen. Hooked for the
-        /// same reason as `_MIA`: it hands back the asset itself, so a material can be returned in
-        /// its place.
-        /// </summary>
+        /// <summary>`_LIA<T>` — the blocking loader.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate IntPtr LiaFn(IntPtr owner, IntPtr reference, IntPtr methodInfo);
 
@@ -96,21 +38,7 @@ namespace InFalsusChartLoader
         private static NativeHook<LiaFn> _lia;
         private static LiaFn _liaTramp;
 
-        /// <summary>
-        /// `AssetReferenceT&lt;Material&gt; GameplayBackgrounds._UmA(GameplayBackground)`
-        ///
-        /// What the inside of a chart is drawn on. The player's own choice is a small enum — the
-        /// background is one of a handful of shipped scenes — and the enum stays untouched: the
-        /// picture a custom song wants is neither in that set nor in the game's catalogue, so it takes
-        /// the same route as a jacket: hand back a reference the game can load, and substitute the
-        /// material when the load arrives.
-        ///
-        /// Since the v3 format the substitution happens only when the `if` file names a `background`
-        /// for the difficulty being played — a still or a clip (see `BackgroundCatalog`). A song that
-        /// names none keeps the game's own background, which is what "optional" means for this
-        /// field; the older behaviour, where a song's jacket doubled as its background, is gone with
-        /// the format.
-        /// </summary>
+        /// <summary>`GameplayBackgrounds._UmA` — the in-play background reference.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate IntPtr UmaFn(IntPtr backgrounds, int background, IntPtr methodInfo);
 
@@ -132,52 +60,18 @@ namespace InFalsusChartLoader
             _apaTramp = _apa.Trampoline;
             Diagnostics.Info("SongData._apA hooked");
 
-            // Judged here, right after its own attach: it used to be judged after the loader below,
-            // so a loader that would not resolve left this attach unreported as well as uncounted.
             bool ok = Landed(Hook.JacketReference, reference, referencePrologue);
 
-            // Through the runtime, not through reflection, and with no RVA to fall back to. Both
-            // halves of that are deliberate for a generic method:
-            //
-            //  * Reflection cannot read it at all. The generated field's type contains a type
-            //    parameter, `FieldInfo.GetValue` raises `InvalidOperationException: Late bound
-            //    operations cannot be performed on fields with types for which
-            //    Type.ContainsGenericParameters is true`, MethodResolver catches it and answers zero.
-            //    Measured, in the run this was written from.
-            //  * A pinned address belongs to one build. That fallback installed the hook somewhere
-            //    plausible-looking that was never called, and `Attach()` reported nothing wrong — so
-            //    it failed silently on every build but the one it was measured on, which is the
-            //    opposite of what a mod meant to run across versions needs. Refusing is better: the
-            //    count in "n/m hooks installed" then says the jacket will not be substituted.
-            //
-            // A third fact about this method, from `dump.cs`, because it decides what the walk below
-            // can return: `_MIA<T>` is declared `// RVA: -1` — the generic definition has no code —
-            // and its `GenericInstMethod` block lists exactly one instantiation, `_MIA<object>`. That
-            // is the body every reference-type call goes to, including the cards'.
-            // `script.json` agrees from the other side: the `_MIA<Material>` usage has
-            // `MethodAddress: 0` while every entry around it has a real one.
             IntPtr load = MethodResolver.ByRuntime("AddressableHandleAutoReleaser", "_MIA",
                                                    Image, Namespace);
             if (load == IntPtr.Zero)
             {
-                // Reported, and the install carries on: this loader serves the song-list cards, while
-                // the three installs below answer at their own call sites — the loading screen, the
-                // results screen and the in-play background. An early return here used to take all
-                // three down with it, and to leave the `_apA` attach above unjudged.
-                //
-                // "could not be found" rather than "could not be resolved": this line ships in Release,
-                // and build.bat's artifact check keeps `could not be resolved` on its bad list because
-                // that phrase belongs to a Debug-only offset warning, which a release does not carry.
-                // This is the other kind — a message a release user is meant to see — so it uses the
-                // wording the rest of this mod's shipping errors use.
                 Diagnostics.Error("AddressableHandleAutoReleaser._MIA could not be found; custom " +
                                   "jackets will not be substituted onto the song list");
             }
             else
             {
 #if DEBUG
-                // What the runtime handed over, so that "resolved" and "resolved to something callable"
-                // stop being the same word in the log.
                 Diagnostics.Info($"  the method's first words: {JacketFactory.Words(load, 4)}");
 #endif
 
@@ -193,27 +87,14 @@ namespace InFalsusChartLoader
                 ok &= Landed(Hook.JacketMaterial, load, loadPrologue);
             }
 
-            // 另外两条。少了它们，只有选曲卡片有图、别的界面都退回游戏的兜底 —— 这正是被发现
-            // 时的形状：选曲界面有曲绘，加载界面没有。曲绘不是一个入口，是 2×2：
-            //
-            //   取引用：  _apA(in SongInfo, bool)        / _ZOA(in SongChartInfo, bool)
-            //   加载：    _MIA<T>(…, ref Releaser, …)    / _LIA<T>(…)
             ok &= InstallChartReference();
             ok &= InstallChartLoader();
 
-            // 第三条取引用。它不是曲绘那一族的成员 —— 它给的是谱面内的背景 —— 但它用的是同一套
-            // 握手、同一个材质目录（一首歌的背景就是它的曲绘），所以安装和卸载都挂在这一组上。
             ok &= InstallBackground();
             return ok;
         }
 
-        /// <summary>
-        /// `GameplayBackgrounds._UmA` —— 谱面内的背景。
-        ///
-        /// 与 `_apA` / `_ZOA` 同一套握手，区别只在"认歌"用的是什么：这里连歌都没有，参数只有一个
-        /// 玩家选的背景枚举。所以身份只能从**游戏当前选中的那首歌**推（见 <see cref="Selection"/>），
-        /// 而这也解释了它为什么必然是对的 —— 背景是进谱面时才要的，那一刻"当前选中"就是"这一局要放的"。
-        /// </summary>
+        /// <summary>Installs the in-play background hook.</summary>
         private static bool InstallBackground()
         {
             IntPtr target = MethodResolver.ByName("GameplayBackgrounds", "_UmA");
@@ -236,9 +117,7 @@ namespace InFalsusChartLoader
             return Landed(Hook.Background, target, prologue);
         }
 
-        /// <summary>
-        /// `SongData._ZOA` —— 调用者手上是**难度记录**而不是歌时，曲绘从这里取。
-        /// </summary>
+        /// <summary>Installs the `_ZOA` hook.</summary>
         private static bool InstallChartReference()
         {
             IntPtr target = MethodResolver.ByName("SongData", "_ZOA");
@@ -261,7 +140,7 @@ namespace InFalsusChartLoader
             return Landed(Hook.ChartReference, target, prologue);
         }
 
-        /// <summary>`AddressableHandleAutoReleaser._LIA&lt;T&gt;` —— 两个加载器里的阻塞那个。</summary>
+        /// <summary>Installs the `_LIA` hook.</summary>
         private static bool InstallChartLoader()
         {
             IntPtr target = MethodResolver.ByRuntime("AddressableHandleAutoReleaser", "_LIA",
@@ -308,14 +187,7 @@ namespace InFalsusChartLoader
             _apaTramp = null;
         }
 
-        /// <summary>
-        /// Answers a jacket request for one of this mod's songs with a reference the game can load,
-        /// and remembers to substitute the real picture when that load arrives.
-        ///
-        /// Nothing about the returned reference is special: it is whatever the game would have used
-        /// for a song with no jacket of its own, and it resolves normally. The substitution happens
-        /// on the other side.
-        /// </summary>
+        /// <summary>Answers a jacket request and arms the material for the load.</summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static IntPtr ApADetour(IntPtr songData, IntPtr songInfo, byte large, IntPtr methodInfo)
         {
@@ -349,10 +221,7 @@ namespace InFalsusChartLoader
             return fallback;
         }
 
-        /// <summary>
-        /// Substitutes this mod's material for the one load that was just armed, and passes every
-        /// other load — of any asset type — straight through.
-        /// </summary>
+        /// <summary>Substitutes the armed material on its load.</summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static IntPtr MiaDetour(IntPtr owner, IntPtr releaser, IntPtr reference, byte forceReload,
                                         IntPtr methodInfo)
@@ -387,13 +256,7 @@ namespace InFalsusChartLoader
             return _miaTramp(owner, releaser, reference, forceReload, methodInfo);
         }
 
-        /// <summary>
-        /// 按难度取曲绘的那条路：是我们的谱面就把刚拿到的引用记下来，等它被加载时替换。
-        ///
-        /// 与 `ApADetour` 同一套握手，区别只在"认歌"用的是什么 —— 这里只有 `SongChartInfo`，
-        /// 没有 `SongInfo`。认的是**这份记录是谁的**：传数组元素时**地址**就是答案，
-        /// 传结构体副本时由**正在打的那首歌**回答（见 `JacketCatalog.FindByChart`）。
-        /// </summary>
+        /// <summary>Answers a chart's jacket request and arms the material for the load.</summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static IntPtr ZoaDetour(IntPtr songData, IntPtr chartInfo, byte large, IntPtr methodInfo)
         {
@@ -421,9 +284,7 @@ namespace InFalsusChartLoader
             return fallback;
         }
 
-        /// <summary>
-        /// 阻塞那个加载器的另一半握手：替换逻辑与 `_MIA` 完全相同，靠同一个指针恒等分辨。
-        /// </summary>
+        /// <summary>Substitutes the armed material on its blocking load.</summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static IntPtr LiaDetour(IntPtr owner, IntPtr reference, IntPtr methodInfo)
         {
@@ -450,22 +311,9 @@ namespace InFalsusChartLoader
             return _liaTramp(owner, reference, methodInfo);
         }
 
-        /// <summary>
-        /// The background is the one material the game dresses itself: the game's own material is
-        /// loaded for the reference, and what goes on the quad is a clone of it carrying this mod's
-        /// picture — so everything the game authored on its backgrounds (shader, queue, z-test, the
-        /// mask slots, blend, keywords) comes along and nothing about it is guessed here.
-        ///
-        /// <b>There is no way back to the material this mod built.</b> That material is the very
-        /// thing that hid this build's mask, so serving it after a failure would turn a loud failure
-        /// back into the silent symptom this whole round exists to kill. A run where the clone cannot
-        /// be made keeps the game's own background — what an unmodded game shows — latches this mod's
-        /// substitution off for the session, and names what failed in one Release-visible Error.
-        /// </summary>
+        /// <summary>Returns a clone of the game's background material carrying this mod's picture.</summary>
         private static IntPtr CloneBackground(IntPtr owner, IntPtr reference, IntPtr ours, IntPtr methodInfo)
         {
-            // The load itself, first and unconditionally: whatever happens below, the game is handed
-            // a material for the reference it asked to load.
             IntPtr game = _liaTramp(owner, reference, methodInfo);
 
             if (_backgroundCloneFailed) return game;
@@ -486,20 +334,10 @@ namespace InFalsusChartLoader
             return game;
         }
 
-        /// <summary>
-        /// Said once, then never asked again: a clone that cannot be made in this build cannot be
-        /// made on the next load either, and every answer now costs an Error.
-        /// </summary>
+        /// <summary>Whether the background clone failed for this session.</summary>
         private static bool _backgroundCloneFailed;
 
-        /// <summary>
-        /// 谱面内背景的取引用那一半：是我们的歌、而且这一难度有 `background` 时才替换。
-        ///
-        /// 认歌用的是"游戏当前选中的歌"，因为参数里只有一个背景枚举。拿不到选中项（还没选到歌）时
-        /// 什么都不做 —— 那种情况下这局也不是我们的歌。要什么由 `BackgroundCatalog` 决定：是静态
-        /// 图就是它建好的材质，是视频就先去把播放器点起来（见 `VideoBackground`）；作者没写
-        /// `background` 就什么都不 arm，游戏画它自己的背景。
-        /// </summary>
+        /// <summary>Answers a background request when the played song names one.</summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static IntPtr UmaDetour(IntPtr backgrounds, int background, IntPtr methodInfo)
         {
@@ -510,8 +348,6 @@ namespace InFalsusChartLoader
             {
                 try
                 {
-                    // 免门读法：带门的 `TryRead` 要那格难度字节，而游戏从不写它（V8 §3、`HANG_HANDOFF`
-                    // §9.2 量的）⇒ 门恒假、这条替换就永远不会 arm。难度由 `Find` 自己取（`_applied` 优先）。
                     string why = null;
                     var entry = default(BackgroundCatalog.Entry);
                     bool armed = Selection.TryReadSong(out IntPtr song) &&
@@ -527,8 +363,6 @@ namespace InFalsusChartLoader
                     {
                         JacketCatalog.Disarm();
 
-                        // 上一首的视频不该在这首里继续跑：无论这次是"没写 background"还是"写了但
-                        // 没建成"，这一局要的都只是游戏自己的背景。
                         VideoBackground.Stop();
 
                         if (why != null)

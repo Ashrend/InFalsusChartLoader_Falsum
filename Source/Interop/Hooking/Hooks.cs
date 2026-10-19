@@ -2,130 +2,8 @@ using System;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// The native hooks: which game functions are patched, and what happens when one faults.
-    ///
-    /// All of them are thin. Each hook is a file of its own under Detours/ — its delegate shape, its
-    /// trampoline and its detour body — and the decisions live in <see cref="ChartCatalog"/>
-    /// and <see cref="AudioCatalog"/>, so a mistake here is a routing mistake rather than a data one.
-    ///
-    /// Every target is resolved by name, through the interop assembly Cpp2IL generates from the
-    /// installed game. No address is pinned anywhere in this mod: a name that does not resolve leaves
-    /// its hook uninstalled and says so, rather than patching a guess and reporting success — see
-    /// <see cref="MethodResolver"/> for why that distinction is the whole point.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Twenty-two detours, installed by twelve functions. Eight of them exist because a custom song
-    /// needs the game to accept something it has no path for — a name it will look up, a byte range
-    /// it will read, a picture it cannot reach. Each of those answers, and each is on a hot path, so
-    /// each stays thin. One more answers for this mod's pack at the single accessor every read of a
-    /// pack's row of visuals goes through, giving it the In Falsus pack's row. One answers for the
-    /// custom songs' difficulties at the game's own state query for one song and one difficulty:
-    /// every difficulty of a custom song is open, and one the `if` file left chartless is the game's
-    /// own "this song has no chart here" — see `DifficultyDetour`, in the song-select's own file.
-    /// One hides the results screen's unlock-progress container for a custom song: the game fills it
-    /// from the save's own progression, which has nothing to say about a difficulty this mod already
-    /// answers as open, so the detour takes the container's own hide branch. See
-    /// `ResultsUnlockDetour`.
-    /// Two more answer nothing: they count and report, because whether the game took each step cannot be read off
-    /// the decompilation with confidence and one number per step settles it. Two do neither — each
-    /// changes what the game does around a call it is making, so that a difficulty change reaches
-    /// the pictures: one widens the song-select's own reload to include a difficulty change, the
-    /// other rebuilds the pack screen's cards, which that screen never asks the game to rebuild.
-    /// One drives nothing of the game's at all: it is the game's starting sequence handing over to
-    /// the running chart — the moment the chart starts — and its only work is setting this mod's
-    /// in-play background clip running with it, so that a play and a retry both begin the picture at
-    /// its first frame; see <see cref="VideoBackground"/>. Two more drive nothing either: they watch
-    /// the scene's own music being paused and resumed — `_Dg._hiA` and `._KiA`, the calls the pause
-    /// entry and the resume countdown make — and hold that same clip level with it. And four keep the custom songs' results out of the game's own
-    /// save — the two reads of a
-    /// song's record and the one merge, on `GameResultsV4`, answered from a table of this mod's own,
-    /// and the encounter result's writer, whose call is not made at all for a custom play; see
-    /// <see cref="CustomResults"/>.
-    /// </para>
-    /// <list type="bullet">
-    /// <item><description>
-    /// <b>`_s._VA`</b> — the chart loader. The game builds `{BaseName}{difficulty}.spc` and asks for
-    /// it by name; a custom chart has no StreamingAssets entry, so without this the lookup throws
-    /// inside a coroutine and the scene hangs.
-    /// </description></item>
-    /// <item><description>
-    /// <b>`_BG._DJA`</b> — the name lookup, answered so the game can find a custom song's audio at
-    /// all — and <b>`_J._hF._ZgA`</b>, the audio read itself. The game's own files are obfuscated and
-    /// this one's are not, so the bytes have to be substituted rather than decoded; `_ZgA` is the one
-    /// place where the bytes are still the mod's to choose.
-    ///
-    /// <para>
-    /// `_ZgA` is also the one detour that stands in for a body with side effects on the game's own
-    /// state rather than only on its return: the body opens by taking the read's block out of a set
-    /// the dispatcher reads, and closes by taking it out of two. Answering the read without those
-    /// three calls leaves the block where the dispatcher will later mistake it for a duplicate and
-    /// cancel the next read that lands on it. See <see cref="PendingReads"/>.
-    /// </para>
-    /// </description></item>
-    /// <item><description>
-    /// <b>`SongData._apA`</b> and <b>`AddressableHandleAutoReleaser._MIA`</b> — the two halves of
-    /// showing a jacket, which the game can only do for something in its own Addressables catalogue.
-    /// A jacket is not one entry but a pair of axes, so there are three more of these:
-    /// <b>`SongData._ZOA`</b> and <b>`AddressableHandleAutoReleaser._LIA`</b> for the callers that
-    /// hold a difficulty record instead of a song, and <b>`GameplayBackgrounds._UmA`</b> for the
-    /// background behind the chart, which a custom song's picture also stands in for. All five share
-    /// one handshake and one material catalogue.
-    /// </description></item>
-    /// <item><description>
-    /// <b>`SongSelectScene._sN`</b> and <b>`CoreScene._CB.MoveNext`</b> — the play gate and the
-    /// scene switch. Both are reported and neither is changed; they are the two halves of "the
-    /// button does nothing" against "the game started something and stalled", and telling those
-    /// apart from the outside was the whole of a round of work.
-    /// </description></item>
-    /// <item><description>
-    /// <b>`SongSelectScene._MN`</b> — the selection being applied, on the screen where a picture is
-    /// asked for by song. Two things are wrong with the pictures that a difficulty change has to
-    /// reach, and both are answered from here: it is the only place where the difficulty is known
-    /// while it is being applied (the song-select background asks for its picture <i>before</i> the
-    /// hook that records the scene has run), and the game reloads those pictures only on a song
-    /// change, which this widens to include a difficulty change. See <see cref="Selection"/> and
-    /// <c>SongSelectHook</c>.
-    /// </description></item>
-    /// <item><description>
-    /// <b>`PackVisualMemberLarge._vc`</b> — the same problem on the pack screen, where a picture is
-    /// asked for by song but the screen has no difficulty of its own to answer with, and where the
-    /// game does not re-ask at all when the difficulty changes. The difficulty is taken from this
-    /// call, and the cards are rebuilt through the game's own card builder when it moves. See
-    /// <c>PackVisualHook</c>.
-    /// </description></item>
-    /// <item><description>
-    /// <b>`GameResultsV4.TryGetResult`</b> (both arities) and <b>`TryUpdate`</b> — the result
-    /// table's two readers and its only writer, answered from a table of this mod's own for the
-    /// songs it imported. The game's own table never sees a custom song's record, which is what
-    /// keeps the game's own save file free of them and what puts them in `IFCL.sav` instead. Beside
-    /// them, <b>`EncounterResults.UpdateEncounterResult`</b> — the settlement's other write, the
-    /// encounter ("回想") result — is dropped for a custom play rather than redirected, so nothing
-    /// of it is kept anywhere. See <see cref="CustomResults"/>.
-    /// </description></item>
-    /// <item><description>
-    /// <b>`DifficultyUnlockContainer._GB`</b> — the results screen's unlock-progress container. For a
-    /// custom song the detour hands the game's own method its "none" difficulty, which is the
-    /// method's own hide branch: the bar is hidden and its progress is not refreshed for a result the
-    /// mod keeps out of the save. See <c>ResultsUnlockHook</c>.
-    /// </description></item>
-    /// </list>
-    /// <para>
-    /// In the MelonLoader build, attaching a detour costs about 400 ms. Measured in the sibling mod
-    /// in this repository: every hook 395-418 ms, independent of the size of the function being
-    /// hooked — the shape of a fixed wait, not of work. Where it goes is not known; it is inside
-    /// MelonLoader's own native bootstrap, and it is not MonoMod, which is the Mono path. The BepInEx
-    /// build is not covered by this measurement.
-    /// </para>
-    /// <para>
-    /// In the MelonLoader build, `NativeHook&lt;T&gt;.Attach()` does not report failure —
-    /// `CoreClrDelegateFixer.SanityCheckDetour` returns silently when it is not satisfied — so a
-    /// "hooked" line in the log means the call was made, not that the hook is in place. See
-    /// <see cref="NativeHook{T}"/> for the one place a second loader's backend has to keep that
-    /// contract.
-    /// </para>
-    /// </remarks>
+    /// <summary>The native hooks: which game functions are patched, and what happens when one faults.</summary>
+    /// <remarks>Each detour lives in its own file under Detours/; every target is resolved by name.</remarks>
     internal static unsafe partial class Hooks
     {
         /// <summary>Set when a detour throws. Every detour stops calling into the mod after that.</summary>
@@ -133,74 +11,31 @@ namespace InFalsusChartLoader
 
         internal static int Faults { get; private set; }
 
-        // What each detour has seen. Plain fields incremented unconditionally, read only by the
-        // probes: a long added to a hot path is a few bytes, and the alternative — counting behind
-        // [Conditional] — costs more than it saves, because a counter method is two metadata rows
-        // where a field is one.
         internal static long VaCalls, VaServed;
         internal static long DjaCalls, DjaHits;
         internal static long ZgaCalls, ZgaServed;
         internal static long ApACalls, ApAArmed;
 
-        /// <summary>
-        /// Jacket requests for a song of this mod's that had no picture to hand back.
-        ///
-        /// Beside the armed count rather than folded into it: "the game never asked about the song"
-        /// and "it asked and the picture was missing" are different problems, and both leave
-        /// <see cref="ApAArmed"/> at zero.
-        /// </summary>
+        /// <summary>Jacket requests for a custom song that had no picture.</summary>
         internal static long ApaAsked;
 
         internal static long MiaCalls, MiaClaimed;
 
-        // 曲绘的另一半：按难度取引用（`_ZOA`）与阻塞加载（`_LIA`）。分开计数，因为
-        // "卡片有图、加载界面没有"正是这两条中某一条没被走到时的形状。
         internal static long ZoaCalls, ZoaArmed, LiaCalls, LiaClaimed;
 
-        /// <summary>谱面内背景（`_UmA`）。与曲绘分开计数，因为"背景换了、卡片没换"是它独有的形状。</summary>
+        /// <summary>In-play background requests and how many were armed.</summary>
         internal static long UmaCalls, UmaArmed;
 
-        /// <summary>
-        /// Background requests for a song of this mod's that had a background named and could not
-        /// produce one — a still that would not decode, a clip whose player would not build, or a
-        /// per-difficulty background asked for before the difficulty is known.
-        ///
-        /// Beside the armed count for the reason <see cref="ApaAsked"/> is: a request that was
-        /// answered and a request that never happened both leave <see cref="UmaArmed"/> standing
-        /// still, and "no background was named" — the usual case — is silent on purpose.
-        /// </summary>
+        /// <summary>Background requests for a custom song that could not be answered.</summary>
         internal static long UmaUnset;
 
-        /// <summary>
-        /// Chart starts: the game's starting sequence handing over to the running chart
-        /// (`GameScene._rk`, the call every path of `GameScene._UB.MoveNext` ends on), which is where
-        /// the in-play clip is set running. Kept beside the clip's own count
-        /// (`VideoBackground.Starts`) because the two mean different things — a run of shipped songs
-        /// moves this one and not that one.
-        /// </summary>
+        /// <summary>Chart starts.</summary>
         internal static long ChartStarts;
 
-        /// <summary>
-        /// The scene's own music being paused and taken up again — `_Dg._hiA` / `_Dg._KiA` — which
-        /// is what this mod's in-play clip follows (see <see cref="VideoBackground"/>). `MusicPauses`
-        /// is one per pause; `MusicResumes` counts every fade the music goes through, not only the
-        /// one that answers a pause — the clip's own `Holds`/`Resumes` beside them are the pair that
-        /// says what actually followed.
-        /// </summary>
+        /// <summary>Pauses and resumes of the scene's music.</summary>
         internal static long MusicPauses, MusicResumes;
 
 #if DEBUG
-        // ---- what the detours' own bodies cost ------------------------------------------------
-        // A screen that stutters has to be attributable, so these accumulate the ticks spent inside
-        // this mod's half of a detour — never inside the game's own body, which the trampoline runs
-        // outside the measured span — and `Probe.Status` prints the running totals in milliseconds.
-        // Diffing two probe lines against the wall clock between them says whether the mod is the
-        // cost. The pack row accessor is counted here as well: it runs from the pack list's own
-        // update and was the one hot path with no number at all (`CHARTLOADER_HANDOFF_V18` §6,
-        // open item 2).
-        //
-        // Debug-only: the measurement is two stopwatch reads per call, and a Release build has no
-        // probe to print it to, so it carries neither.
         internal static long RowCalls, RowRedirects;
         internal static long TicksRow, TicksApa, TicksMia, TicksVc, TicksRead;
 
@@ -209,7 +44,7 @@ namespace InFalsusChartLoader
         internal static double Ms(long ticks) => ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
 #endif
 
-        /// <summary>How many went in, and how many were tried. Reported by the probe.</summary>
+        /// <summary>How many hooks went in, and how many were tried.</summary>
         internal static int Installed { get; private set; }
         internal static int Attempted { get; private set; }
 
@@ -218,11 +53,8 @@ namespace InFalsusChartLoader
             int installed = 0;
             int attempted = 0;
 
-            // Attempts are counted beside the calls rather than written down as a total, so the
-            // expected number cannot drift when one is added or removed.
             void Count(bool ok) { attempted++; if (ok) installed++; }
 
-            // The chart hook goes first: without it nothing the mod contributes can be loaded at all.
             Count(InstallChartLoad());
             Count(InstallChartStart());
             Count(InstallPause());
@@ -260,10 +92,7 @@ namespace InFalsusChartLoader
             DetachChartLoad();
         }
 
-        /// <summary>
-        /// The first bytes at a hook target, taken before it is attached, so the attach can be
-        /// checked against them afterwards.
-        /// </summary>
+        /// <summary>The first bytes at a hook target.</summary>
         internal static unsafe byte[] Prologue(IntPtr target, int count = 8)
         {
             if (target == IntPtr.Zero) return null;
@@ -273,14 +102,7 @@ namespace InFalsusChartLoader
             return bytes;
         }
 
-        /// <summary>
-        /// Whether an attach changed the target at all.
-        ///
-        /// The only way to tell: `Attach()` returns nothing and says nothing when it fails, and a
-        /// detour that is not in place is indistinguishable from one that is never reached — both
-        /// leave the counter at zero for the rest of the run. A hook engine that has taken the target
-        /// has rewritten its first bytes, so comparing them is the whole test.
-        /// </summary>
+        /// <summary>Whether an attach changed the target.</summary>
         private static unsafe bool Patched(IntPtr target, byte[] prologue)
         {
             if (target == IntPtr.Zero || prologue == null) return false;
@@ -290,15 +112,7 @@ namespace InFalsusChartLoader
             return false;
         }
 
-        /// <summary>
-        /// A hook, named for the one place a name is needed: a detour that did not land.
-        ///
-        /// An enum rather than the string it replaced, and that is about what a Release build carries.
-        /// The name is an argument to <see cref="Landed"/>, which answers with the installer's return
-        /// value and therefore cannot be `[Conditional("DEBUG")]` — and an argument to a method that
-        /// ships is a string that ships. Thirteen of these names were in every Release build, readable
-        /// by nothing in it. They now live in <see cref="Name"/>, which that build does not compile.
-        /// </summary>
+        /// <summary>The hooks, named for a detour that did not land.</summary>
         internal enum Hook
         {
             ChartLoader,
@@ -325,13 +139,7 @@ namespace InFalsusChartLoader
             SceneSwitch,
         }
 
-        /// <summary>
-        /// Whether a detour landed, reported by name when it did not.
-        ///
-        /// The answer becomes the installer's return value, which is what the `n/m hooks installed`
-        /// line is built from — and that line is in every build, so a hook that was attached and did
-        /// not take reads as a count, not as an absence nobody can see.
-        /// </summary>
+        /// <summary>Whether a detour landed.</summary>
         private static bool Landed(Hook hook, IntPtr target, byte[] prologue)
         {
             if (Patched(target, prologue)) return true;
@@ -340,13 +148,7 @@ namespace InFalsusChartLoader
             return false;
         }
 
-        /// <summary>
-        /// Says which hook did not take.
-        ///
-        /// The body is guarded, not just the call site: a `[Conditional]` method is still compiled in
-        /// a build where its calls are removed, so a name rendered outside `#if DEBUG` would be a
-        /// string in the Release build in exactly the way <see cref="Hook"/> exists to avoid.
-        /// </summary>
+        /// <summary>Says which hook did not take.</summary>
         [System.Diagnostics.Conditional("DEBUG")]
         private static void NotLanded(Hook hook)
         {
@@ -386,16 +188,7 @@ namespace InFalsusChartLoader
         };
 #endif
 
-        /// <summary>
-        /// Reports a detour fault once, then stops calling into the mod.
-        ///
-        /// The hook is named on the line only in a Debug build, and the article standing in for the
-        /// name in a Release one is why the sentence still reads: a release says <i>a</i> detour
-        /// faulted, which is what the person reading it has to act on, and which one it was is a
-        /// question for a build that can answer it. A <see cref="Hook"/> rather than the string this
-        /// took, for the reason the enum exists — this was the third member of that family, and the
-        /// one the first pass over it missed.
-        /// </summary>
+        /// <summary>Reports a detour fault once, then stops calling into the mod.</summary>
         private static void Fault(Hook hook, Exception e)
         {
             Faulted = true;
@@ -405,10 +198,7 @@ namespace InFalsusChartLoader
             Diagnostics.Error($"{Which(hook)}detour faulted, custom charts disabled: {Diagnostics.Describe(e)}");
         }
 
-        /// <summary>
-        /// What the fault line calls the hook: its name in a Debug build, and the article the sentence
-        /// needs in a Release one. See <see cref="Fault"/> and <see cref="Name"/>.
-        /// </summary>
+        /// <summary>The hook's name in Debug, or an article in Release.</summary>
         private static string Which(Hook hook)
         {
 #if DEBUG

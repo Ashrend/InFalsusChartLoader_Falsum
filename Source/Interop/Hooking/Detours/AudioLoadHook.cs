@@ -6,34 +6,15 @@ namespace InFalsusChartLoader
 {
     internal static unsafe partial class Hooks
     {
-        // The three methods this file hooks, each resolved by name:
-        //   _ZgA  private void _ZgA(record)                 — the FMOD servicing thread's per-read handler
-        //   _bGA  private void _bGA(record, uint result)    — hands the filled buffer to the native transform
-        //   _DJA  public bool _DJA(string, out int index)   — name to StreamingAssets index
-
-        /// <summary>
-        /// `_J._hF._ZgA(record, _)`
-        ///
-        /// The read record, as the decompilation lays it out: <c>record[0]</c> points at the info
-        /// block and <c>record[1]</c> is the file handle; <c>info+8</c> is the read offset,
-        /// <c>info+12</c> the byte count, <c>info+32</c> the destination buffer, and <c>info+40</c>
-        /// where the number of bytes written is reported back.
-        ///
-        /// The handle is what makes this affordable: it is
-        /// <c>index | length &lt;&lt; 24 | kind &lt;&lt; 56</c>, so the file being read is in the
-        /// argument and this hook never has to recognise a reader or track which song is playing.
-        /// </summary>
+        /// <summary>`_ZgA` — the game's per-read handler.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate void ZgAFn(IntPtr record, IntPtr unused);
 
-        /// <summary>
-        /// `_BG._DJA(string name, out int index) -> bool` — the name lookup every StreamingAssets
-        /// read starts with, charts included, so the body is a compare and a pass-through.
-        /// </summary>
+        /// <summary>`_DJA` — the name-to-index lookup.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate byte DjaFn(IntPtr self, IntPtr name, IntPtr index);
 
-        /// <summary>`_J._hF._bGA(record, result)`. Called to finish a read this mod served itself.</summary>
+        /// <summary>`_hF._bGA(record, result)` — finishes a read this mod served.</summary>
         internal static delegate* unmanaged[Cdecl]<IntPtr, uint, void> CompleteRead;
 
         private static NativeHook<ZgAFn> _zga;
@@ -43,22 +24,12 @@ namespace InFalsusChartLoader
 
         private static bool InstallAudioLoad()
         {
-            // `_hF`, not `_J._hF`: the interop index is keyed by the type's own name, and a nested
-            // type's name does not carry its parent. Asking for the qualified name finds nothing —
-            // and now that there is no RVA to fall back to, that is an Error naming the method and no
-            // hook at all, instead of a patch at a pinned address that happened to work once.
             IntPtr zgA = MethodResolver.ByName("_hF", "_ZgA");
             if (zgA == IntPtr.Zero) return false;
 
             IntPtr bga = MethodResolver.ByName("_hF", "_bGA");
             if (bga == IntPtr.Zero) return false;
 
-            // Every name this installer needs is settled before anything is attached, so a name the
-            // build does not have costs the whole group instead of leaving `_ZgA` attached and
-            // unjudged: the pair is one answer — the game finds the name, then reads the bytes — and
-            // the `_DJA` lookup used to be asked after the attach above it, which meant an early
-            // return there left a live hook that neither `Landed` ever looked at and that the
-            // `n/m hooks installed` count called missing.
             IntPtr dja = MethodResolver.ByName("_BG", "_DJA");
             if (dja == IntPtr.Zero) return false;
 
@@ -109,10 +80,6 @@ namespace InFalsusChartLoader
                 try
                 {
 #if DEBUG
-                    // Before anything decides: the game is about to fail this read without reading
-                    // it if its block is in the cancelled set. Counted, not acted on -- see
-                    // PendingReads.Observe. This is the measurement of the whole mechanism, so it
-                    // has to sit ahead of this mod's own handling and change nothing.
                     PendingReads.Observe(record);
 #endif
                     if (AudioCatalog.TryServe(record)) { ZgaServed++; return; }
@@ -126,12 +93,7 @@ namespace InFalsusChartLoader
             _zgaTramp(record, unused);
         }
 
-        /// <summary>
-        /// Answers for this mod's audio names and passes every other name through untouched.
-        ///
-        /// This is the hottest of the three hooks — every StreamingAssets lookup in the game goes
-        /// through it — so the body stays a string compare and a dictionary miss.
-        /// </summary>
+        /// <summary>Answers for this mod's audio names.</summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static byte DjaDetour(IntPtr self, IntPtr name, IntPtr index)
         {

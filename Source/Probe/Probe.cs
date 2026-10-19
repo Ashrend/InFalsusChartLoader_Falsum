@@ -3,37 +3,9 @@ using System.Collections.Generic;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// Everything a Debug build can report about one run, in the order the run happens.
-    ///
-    /// <para>
-    /// This file is not compiled into a Release build at all — the project excludes this folder — and
-    /// neither are its call sites, which are wrapped in `#if DEBUG`. That is the point: a probe may
-    /// read whatever it likes, because none of it ships.
-    /// </para>
-    /// <para>
-    /// It is written to answer the questions a single run has to settle, in the order they stop
-    /// mattering:
-    /// </para>
-    /// <list type="number">
-    /// <item><description>Did the mod reach the game at all — the codec, the asset manager, the hooks.</description></item>
-    /// <item><description>What did the chart folders yield, and what was each rejection.</description></item>
-    /// <item><description><b>Did the tables grow.</b> A song only appears if <c>_ffb</c> grew, an
-    /// aggregate of <c>allSongInfo</c> the game rebuilds once and will not rebuild again. This is the
-    /// line to read first when nothing shows up.</description></item>
-    /// <item><description>Is what was written back readable — the ids, the names, the chart counts.</description></item>
-    /// <item><description>Are the hooks alive, and are they firing on the right things.</description></item>
-    /// </list>
-    /// <para>
-    /// Field offsets are asked for by name rather than written down, which makes this file a second
-    /// opinion on <see cref="Offsets"/> rather than a copy of it: a disagreement shows up here.
-    /// </para>
-    /// </summary>
+    /// <summary>Debug-only reporting for one run.</summary>
     internal static class Probe
     {
-        // Aliases of the one resolved set (`Offsets`) rather than a second copy of the numbers: the
-        // probe's independent opinion is the `FieldResolver.Lookup` call below, which asks the game
-        // for each field by name and reports what it says — not a duplicated constant.
         private static int SongInfoSize => Offsets.Song.Size;
         private static int SongInfoId => Offsets.Song.Id;
         private static int SongInfoBaseName => Offsets.Song.BaseName;
@@ -54,9 +26,6 @@ namespace InFalsusChartLoader
             line($"hooks           {installed}/{attempted}");
             line($"offsets         {FieldResolver.Stats()}");
 
-            // Nothing in the mod relocates a pinned address any more, so this is not a base for
-            // anything — it is the yes/no on whether GameAssembly was found at all. A zero there
-            // means no hook can have landed, whatever the count above says.
             long baseAddress = GameAssembly.Base.ToInt64();
             line($"game assembly   0x{baseAddress:X}" +
                  (baseAddress == 0 ? "  <-- NOT FOUND; no hook can work" : ""));
@@ -67,10 +36,6 @@ namespace InFalsusChartLoader
         /// <summary>What each folder decided, and what the ones that were kept produced.</summary>
         internal static void Imported(ChartInfo info, int audioIndex, int audioBytes, int jacketCount)
         {
-            // The name here is the one the folder imported under, which is the `if` file's id -- not
-            // the name it will be filed under, which is not settled until registration and may differ
-            // when a shipped song already uses it. Printing this one and not the other is deliberate:
-            // if the two disagree at registration, "song[N] base=" in the after-block says so.
             line($"kept '{Path(info)}' as '{info.BaseName}', audio index {audioIndex} ({audioBytes} bytes), " +
                  $"jackets built {jacketCount}");
             line($"  name='{info.Name}' composer='{info.Composer}' illust={Slots(info.Illustrators)}");
@@ -80,10 +45,7 @@ namespace InFalsusChartLoader
                  $"background={Backgrounds(info)}");
         }
 
-        /// <summary>
-        /// The four jacket file names, and whether they are one file or several — the distinction
-        /// that decides whether four materials were built or one.
-        /// </summary>
+        /// <summary>The four jacket file names and whether they are one file or several.</summary>
         private static string Jackets(ChartInfo info)
         {
             var names = new List<string>(ChartInfo.Difficulties);
@@ -93,15 +55,7 @@ namespace InFalsusChartLoader
             return string.Join(", ", names) + (distinct == 1 ? "  (one file)" : $"  ({distinct} files)");
         }
 
-        /// <summary>
-        /// The in-play backgrounds, or a word saying the author named none — the difference between
-        /// "the game's own background" and "a background that failed to build" has to be readable
-        /// from the import block, because the two look the same on screen.
-        /// </summary>
-        /// <summary>
-        /// The four backgrounds by file name, in difficulty order, with <c>-</c> where the `if` file
-        /// names none for that difficulty — or <c>(none; the game's own)</c> when it names none at all.
-        /// </summary>
+        /// <summary>The four backgrounds by file name, with <c>-</c> where none is named.</summary>
         private static string Backgrounds(ChartInfo info)
         {
             if (info.BackgroundPaths == null) return "(none; the game's own)";
@@ -115,10 +69,7 @@ namespace InFalsusChartLoader
             return string.Join("/", names);
         }
 
-        /// <summary>
-        /// One per-difficulty key's four values, in difficulty order, with <c>-</c> for a difficulty
-        /// the `if` file left out — or <c>(none)</c> when it left the key out entirely.
-        /// </summary>
+        /// <summary>One per-difficulty key's four values, with <c>-</c> for one left out.</summary>
         private static string Slots(string[] values)
         {
             if (values == null) return "(none)";
@@ -150,13 +101,7 @@ namespace InFalsusChartLoader
             line($"sizes           {Sizes(songData, packData, packAssets)}");
         }
 
-        /// <summary>
-        /// The sizes afterwards, and what was actually written.
-        ///
-        /// The first thing to read is whether <c>_ffb</c> moved: it is the list song select reads,
-        /// and the game builds it once. If it did not grow, no custom song can appear no matter how
-        /// correct everything else is.
-        /// </summary>
+        /// <summary>The sizes afterwards, and what was written.</summary>
         internal static void After(IntPtr songData, IntPtr packData, IntPtr packAssets,
                                    List<ChartInfo> charts)
         {
@@ -178,10 +123,7 @@ namespace InFalsusChartLoader
             DumpPackVisuals(packAssets);
         }
 
-        /// <summary>
-        /// The counters. Printed on a timer, so a run that never reaches a screen still says whether
-        /// the hooks were called and what they answered.
-        /// </summary>
+        /// <summary>The counters, printed on a timer.</summary>
         internal static string Status() =>
             $"va={Hooks.VaCalls}/{Hooks.VaServed} dja={Hooks.DjaCalls}/{Hooks.DjaHits} " +
             $"zga={Hooks.ZgaCalls}/{Hooks.ZgaServed} apa={Hooks.ApACalls}/{Hooks.ApAArmed} " +
@@ -189,81 +131,26 @@ namespace InFalsusChartLoader
             $"zoa={Hooks.ZoaCalls}/{Hooks.ZoaArmed} lia={Hooks.LiaCalls}/{Hooks.LiaClaimed} " +
             $"uma={Hooks.UmaCalls}/{Hooks.UmaArmed} " +
             $"gate={Hooks.PlayGateCalls}/{Hooks.PlayGateYes} " +
-            // Difficulty states asked of `_NH._UoA`, and how many were about this mod's songs. The
-            // second number says the takeover is in force; it moves whenever the song select repaints
-            // with a custom song selected, whatever the save's own story progress is.
             $"state={Hooks.DifficultyAsked}/{Hooks.DifficultyOurs} " +
-            // The results screen's unlock container: how often the game filled it, and how many of
-            // those fills were for a custom song and were answered with the container's own hide
-            // branch. The second number moving is what says the suppression is in force.
             $"unlock={Hooks.UnlockFills}/{Hooks.UnlockHidden} " +
-            // The selection the game last applied, and how often a difficulty change was given the
-            // reload the game would not have done by itself. `askedNoPicture` above is the other
-            // half: it counts the times a jacket was asked for and the difficulty could not be told,
-            // which is what an empty background on a song with one picture per difficulty looks like.
-            //
-            // `pack` is the same pair for the pack screen: how often a difficulty was applied there,
-            // and how many cards were rebuilt because of one. The second number stays at zero while
-            // no difficulty changes on that screen, which is what says the rebuild is not running
-            // when it has nothing to do.
             $"apply={Hooks.ApplyCalls}/{Hooks.ApplyReloaded} " +
             $"diff={Selection.AppliedDifficulty} song={Selection.AppliedSong} " +
             $"pack={Hooks.PackDifficultyCalls}/{Hooks.PackCardsRebuilt} " +
             $"switch={Hooks.SceneSwitchCalls}@{Hooks.SceneSwitchLastState}" +
-            // What the scene switch is parked on, when it is parked on something. This is the field
-            // that separates a stall from a frame loop in one glance.
             (Hooks.WaitProgress() is string waiting ? $" wait={waiting}" : "") + " " +
             $"jackets={JacketCatalog.Asked}/{JacketCatalog.Claimed} " +
-            // The in-play backgrounds: how many songs have one of their own, what the one video
-            // player is doing, and how many chart starts set it running. `vid=load` that never
-            // becomes `ready` is a clip this machine cannot open — a codec question, not a mod one —
-            // and `vid=fail` is a player that could not be built at all. Neither is visible on
-            // screen (the game's own background shows instead), which is why both are here.
-            //
-            // `cs` is the game's starting sequence handing the play over to the running chart
-            // (`GameScene._rk`), and `vidN` is the clip actually starting with it: `cs` moving while
-            // `vidN` stands still is a chart that began without its clip, and `vidN` counting up once
-            // per play is what a retry restarting the clip looks like.
-            //
-            // `hold` is the pause pair: times the game paused its own music and the clip was held
-            // with it, over times the music came back and the clip followed. Both should count once
-            // per pause and resume of a custom play with a clip, and neither should move for a
-            // shipped song. (`Hooks.MusicResumes` is deliberately not shown: it counts every fade the
-            // music goes through, which is not the same question.)
             $"backgrounds={BackgroundCatalog.Count} cs={Hooks.ChartStarts} " +
             $"vid={VideoBackground.State} vidN={VideoBackground.Starts} " +
             $"vidskew={VideoBackground.Skew:F3} " +
             $"hold={VideoBackground.Holds}/{VideoBackground.Resumes} " +
             $"reads={AudioCatalog.Served}/{AudioCatalog.ServedBytes} " +
-            // The custom results: every record read and the ones answered from this mod's own table,
-            // every merge and the ones that landed there, and the writes of `IFCL.sav` that went
-            // through. `ifcl=0/0` with custom songs in the list means the table was never prepared.
-            //
-            // `enc` is the encounter ("回想") write: how many the settlement made, and how many this
-            // mod dropped because the play was its own. On a custom song's settlement the pair should
-            // move together; on a shipped song's, only the first number should.
             $"ifcl={CustomResults.Reads}/{CustomResults.Served} " +
             $"upd={CustomResults.Updates}/{CustomResults.Merged} saved={CustomResults.Saves} " +
-            // `late` is the saves that landed while the game's own save still raised — the shape
-            // every save has on the build this was measured on. `saved` counting while `late` does
-            // not is a save that returned cleanly; neither counting is a save that did not land.
             $"late={CustomResults.Late} " +
             $"enc={CustomResults.EncounterWrites}/{CustomResults.EncounterDropped} " +
-            // `keyfix` is the stored song ids moved onto this run's ids — the records an earlier
-            // build's slots would otherwise hide. A save carried across a game update should show
-            // this number moving; `0` with custom results on disk means the ids were already level.
             $"keyfix={ResultKeys.Refiled} " +
-            // The read bookkeeping. `outstanding` is the game's own count of reads handed to the
-            // native side and not yet finished: it is the number this mod's leak used to inflate,
-            // and it should hover around the few reads actually in flight, not grow with every
-            // chunk served. `skip` is the thing that leak is suspected of causing — a read the
-            // dispatcher decided to drop, which the game fails without reading. Zero is the answer
-            // that says the mechanism never fires.
             $"outstanding={PendingReads.Outstanding()} skip={PendingReads.Skipped} " +
             $"released={PendingReads.Released} noread={PendingReads.NotTaken} " +
-            // What this mod's own detour bodies have cost so far, cumulative milliseconds — diff two
-            // of these lines against the wall clock between them to judge a stutter. `row` is the
-            // pack row accessor (calls / redirects), which had no counter at all before this.
             $"ourms row={Hooks.Ms(Hooks.TicksRow):F1} apa={Hooks.Ms(Hooks.TicksApa):F1} " +
             $"mia={Hooks.Ms(Hooks.TicksMia):F1} vc={Hooks.Ms(Hooks.TicksVc):F1} " +
             $"read={Hooks.Ms(Hooks.TicksRead):F1} rowN={Hooks.RowCalls}/{Hooks.RowRedirects}";
@@ -319,11 +206,6 @@ namespace InFalsusChartLoader
             int count = Length(packs);
             int stride = Stride(packs, count);
 
-            // Every pack, not the first four: this mod's is at the end of the list, and so is the DLC
-            // pack whose id it must not take — the two numbers a reader has to compare are on that
-            // line. The stride is measured, not the constant this used to carry: `PackInfo` gained a
-            // field, and reading rows at the old stride printed ids and slugs that belonged to no
-            // pack at all.
             for (int i = 0; i < count && i < 12; i++)
             {
                 IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * stride;
@@ -341,14 +223,9 @@ namespace InFalsusChartLoader
             int count = Length(table);
             int stride = Stride(table, count);
 
-            // The object and the array, not just the row count: whether the pack screen draws from the
-            // same instance this mod grew is a question only their addresses can answer.
             line($"pack visuals    assets=0x{packAssets.ToInt64():X} table=0x{table.ToInt64():X} " +
                  $"{count} rows of {stride} bytes");
 
-            // The first material of every row, as a pointer: rows that share one are rows the game has
-            // not filled, and the row this mod wrote is recognisable by matching the one it copied.
-            // The backing slot is asked by name, the way this file asks every other field.
             int backing = FieldResolver.Lookup("SongSelectPackAssets", "BackingImageNonCompleted");
 
             for (int i = 0; i < count; i++)
@@ -359,7 +236,7 @@ namespace InFalsusChartLoader
             }
         }
 
-        /// <summary>An array's element size, measured off the array itself, or 0.</summary>
+        /// <summary>An array's element size, or 0.</summary>
         private static int Stride(IntPtr array, int count)
         {
             if (!Memory.LooksLikeObject(array) || count <= 0) return 0;

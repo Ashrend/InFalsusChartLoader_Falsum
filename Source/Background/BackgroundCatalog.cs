@@ -3,25 +3,7 @@ using System.Collections.Generic;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// The in-play backgrounds this mod built for its songs, and the answer to "what should this song
-    /// be drawn on".
-    ///
-    /// <para>
-    /// A background is a still or a clip, one per difficulty, and both ends in a material:
-    /// a `.png` is decoded into a texture exactly the way a jacket is, and a `.mp4` is played into a
-    /// render texture the material shows (see <see cref="VideoBackground"/>). Which one an entry is
-    /// is its extension — the reader has already refused anything else, so there is nothing to ask
-    /// the disk again.
-    /// </para>
-    /// <para>
-    /// A song with no <c>background</c> in its `if` file has no entry here, and that is an answer
-    /// rather than a gap: the game keeps its own background, which is what the field being optional
-    /// means. The mod's older behaviour — a jacket doubling as the in-play background — is gone with
-    /// the format: an author who wants the jacket there names it again under <c>background</c>, and
-    /// the two catalogs share the build when they do (see <c>JacketFactory.Build</c>'s cache).
-    /// </para>
-    /// </summary>
+    /// <summary>The in-play backgrounds built for custom songs.</summary>
     internal static class BackgroundCatalog
     {
         /// <summary>One difficulty's background: a built material, or a clip still to be started.</summary>
@@ -43,15 +25,7 @@ namespace InFalsusChartLoader
 
         internal static int Count => ByBase.Count;
 
-        /// <summary>
-        /// Builds whatever can be built for one chart folder: the four stills, decoded now, so that a
-        /// picture that cannot be decoded is found before the song is ever played.
-        ///
-        /// A clip is not opened here. Opening one means creating a `VideoPlayer`, a render texture
-        /// and a material, and a video is only ever wanted while its chart is on screen — while a
-        /// still costs a texture nothing else would build. Whatever did build is kept either way:
-        /// a failure costs that difficulty its background, not the song.
-        /// </summary>
+        /// <summary>Builds the stills for one chart folder.</summary>
         internal static bool Add(ChartInfo info, out string reason)
         {
             reason = null;
@@ -90,19 +64,7 @@ namespace InFalsusChartLoader
             return all;
         }
 
-        /// <summary>
-        /// What this song's background is, and whether there is one of this mod's at all.
-        ///
-        /// False with <paramref name="why"/> null is the ordinary "nothing was said" — the caller
-        /// leaves the game's own background alone. False with a reason is a background that was named
-        /// and could not be prepared, which the caller reports: a `.mp4` whose player could not be
-        /// built shows the game's background, and the log is the only place that says why.
-        ///
-        /// The difficulty is picked the way the jackets pick it — an unknown one is not guessed at,
-        /// because a folder may give each difficulty a different background and a wrong picture is
-        /// worse than none. The one case that is not a guess is four entries that are all the same,
-        /// which is a fact about the folder rather than a fallback.
-        /// </summary>
+        /// <summary>Finds a song's background for a difficulty.</summary>
         internal static bool Find(IntPtr songInfo, int difficulty, out Entry entry, out string why)
         {
             entry = default;
@@ -123,11 +85,6 @@ namespace InFalsusChartLoader
                     if (i == 0) entry = entries[0];
                     else if (entries[i].Material != entry.Material || entries[i].Video != entry.Video)
                     {
-                        // Named and different, but which one is unknown: said out loud once, because
-                        // "the background did not show" and "there is no background" are otherwise
-                        // the same sight. Built inside the guard like every other `reason` in this
-                        // mod: it only ever travels to a Debug-only warning, and a literal in a
-                        // normal method ships whether or not anything reads it.
 #if DEBUG
                         why = "a background is set per difficulty and the selected one could not be read";
 #endif
@@ -149,10 +106,7 @@ namespace InFalsusChartLoader
             return true;
         }
 
-        /// <summary>
-        /// Whether a background file is a clip. The reader has already restricted the extension to
-        /// the two this mod knows, so this decides between them and nothing else.
-        /// </summary>
+        /// <summary>Whether a background path is a clip.</summary>
         private static bool IsVideo(string path) =>
             string.Equals(System.IO.Path.GetExtension(path), ".mp4", StringComparison.OrdinalIgnoreCase);
     }

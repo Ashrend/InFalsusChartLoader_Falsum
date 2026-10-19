@@ -2,52 +2,22 @@ using System;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// Room for files the game did not ship with, inside the manager that looks files up by name.
-    ///
-    /// <para>
-    /// A song's audio is asked for as <c>{BaseName}.wav</c> and resolved through `_BG`, which keeps
-    /// four parallel arrays indexed by an integer. The name is turned into that integer by `_DJA`,
-    /// which is hooked, so the name table never has to be touched — but the three arrays the rest of
-    /// the path reads by index do: the length the game reports to FMOD, the `FileInfo` `_jJA`
-    /// dereferences, and the chunk table the reader would consult.
-    /// </para>
-    /// <para>
-    /// Each is extended by building a larger array, copying the old contents, and pointing `_BG` at
-    /// the new one — indices the game already uses keep their values. The new slots at the end are
-    /// the only ones this mod ever writes.
-    /// </para>
-    /// <para>
-    /// Two of those need care, because the manager dereferences one of their words without a null
-    /// check: the `FileInfo` array at the element's first word, and the chunk table at its second.
-    /// A new slot in either has to hold a live object at that word — leaving it zero is a null
-    /// reference, and in the chunk table's case it is thrown from inside the coroutine that finishes
-    /// loading a scene, which is the white screen. They are reached differently, and that is worth
-    /// knowing before reading the code below: the chunk table is walked in full (`_IJA`, once per
-    /// scene change, over every entry), while the `FileInfo` array is only ever read by index — the
-    /// accessors that turn an index into a name or a reader (`_jJA`, `_eJA`), each of which throws on
-    /// a null element of its own. A walk and an indexed read have different reach, so the two are
-    /// filled differently, and why is on <see cref="Grow"/>.
-    /// </para>
-    /// </summary>
+    /// <summary>Room for custom files in the game's streaming-asset manager.</summary>
     internal static unsafe class StreamingAssets
     {
-        // `_BG`'s five offsets are asked by name — see `Resolve` — and each stays at
-        // `Offsets.Unresolved` (-1) until it answers. See `Offsets` for why.
+        private static int FieldFiles = Offsets.Unresolved;
+        private static int FieldLengths = Offsets.Unresolved;  // long[] _uxA
+        private static int FieldFlags = Offsets.Unresolved;    // bool[] _UxA
+        private static int FieldChunks = Offsets.Unresolved;   // _DG[] _vxA
 
-        private static int FieldFiles = Offsets.Unresolved;    // FileInfo[] _TxA
-        private static int FieldLengths = Offsets.Unresolved;  // long[]    _uxA
-        private static int FieldFlags = Offsets.Unresolved;    // bool[]    _UxA
-        private static int FieldChunks = Offsets.Unresolved;   // _DG[]     _vxA, 40 bytes per entry
-
-        /// <summary>`_BG._RxA` — the singleton, resolved with the other four.</summary>
+        /// <summary>`_BG._RxA` — the singleton.</summary>
         private static int SingletonField = Offsets.Unresolved;
 
         private static bool _fieldsAsked;
 
         private static bool _fieldsMissing;
 
-        /// <summary>No stand-in: the array holds values, so a zeroed slot is a complete one.</summary>
+        /// <summary>No stand-in value.</summary>
         private const int None = -1;
 
         private static IntPtr _bg;
@@ -57,15 +27,11 @@ namespace InFalsusChartLoader
 
         internal static bool Resolved => _bg != IntPtr.Zero;
 
-        /// <summary>Finds the manager and the first free index. False when it cannot be reached.</summary>
+        /// <summary>Finds the manager and the first free index.</summary>
         internal static bool Resolve()
         {
             try
             {
-                // The class by name, like every other type this mod reaches. An earlier version read
-                // the global slot the game's own code reads, which is a metadata usage slot: what sits
-                // there before the runtime initialises it is an encoded index, not a class pointer, and
-                // dereferencing it takes the process down. By name there is nothing to be early for.
                 IntPtr klass = FieldResolver.ClassPointer("_BG");
                 if (klass == IntPtr.Zero)
                 {
@@ -80,12 +46,6 @@ namespace InFalsusChartLoader
                     return false;
                 }
 
-                // The manager's five offsets, asked of the game by name. They are fields of *this
-                // build* of the game, so none of them belongs in this file as a number (see Offsets);
-                // and they are asked once, because this runs from a point where the manager may not
-                // exist yet and a name asked again would report its miss again. A miss latches: the
-                // caller's own line says what it costs, and one of the names is simply not in this
-                // build.
                 if (!_fieldsAsked)
                 {
                     _fieldsAsked = true;
@@ -139,11 +99,7 @@ namespace InFalsusChartLoader
             }
         }
 
-        /// <summary>
-        /// Makes room for one more file and records its length. Returns its index, or -1 if any of
-        /// the arrays could not be grown — in which case nothing is left half-written: a file that
-        /// cannot be indexed is not registered at all.
-        /// </summary>
+        /// <summary>Makes room for one more file and records its length.</summary>
         internal static int Add(int length)
         {
             if (!Resolved) return -1;
@@ -163,27 +119,7 @@ namespace InFalsusChartLoader
             return index;
         }
 
-        /// <summary>
-        /// Replaces one of the manager's arrays with one that has room for <paramref name="size"/>
-        /// entries, keeping every existing value.
-        ///
-        /// The element size is taken from the array itself rather than assumed: a reference array and
-        /// a `long` array are both eight bytes here, but the `bool` one is not, and the array knows
-        /// its own byte length and count.
-        /// </summary>
-        /// <param name="standIn">
-        /// Offset inside an element of a reference the manager dereferences without checking it, or
-        /// <see cref="None"/> for an array it only reads values out of. A newly allocated array is
-        /// zeroed, and two of these tables hand that word to code which assumes it holds a live
-        /// record: the `FileInfo` table at its first word, read by index, and the chunk table at its
-        /// second, walked in full.
-        /// </param>
-        /// <param name="own">
-        /// Whether that slot needs an object of its own rather than a copy of another entry's pointer.
-        /// The walk that reads the chunk table also *replaces* what it finds at that word, which
-        /// leaves a copied pointer aimed at whatever the collector takes next -- so that slot is given
-        /// a fresh empty instance. Nothing replaces a `FileInfo`, so the copy there is stable.
-        /// </param>
+        /// <summary>Replaces one of the manager's arrays with a larger one.</summary>
         private static bool Grow(int field, int size, int standIn, bool own)
         {
             IntPtr old = Memory.Ptr(_bg + field);
@@ -215,10 +151,6 @@ namespace InFalsusChartLoader
 
             if (standIn != None && size > oldCount)
             {
-                // The first entry that actually has one, rather than element zero: element zero of
-                // the `FileInfo` table is null — measured, after a version that took its word and
-                // copied a null into every new slot. A null there is not harmless either: the name
-                // lookup reads it and throws, which is the shape of failure that reaches a coroutine.
                 IntPtr stand = IntPtr.Zero;
                 for (int i = 0; i < oldCount && stand == IntPtr.Zero; i++)
                 {
@@ -242,12 +174,7 @@ namespace InFalsusChartLoader
             return true;
         }
 
-        /// <summary>
-        /// A fresh, empty instance of whatever `like` is: the same class, with nothing in it. An
-        /// array becomes a zero-length array of the same element class, anything else a new object
-        /// with every field zero -- for a collection that reads as empty, which is what the walk
-        /// wants to see: an entry with nothing to release and nothing to dereference.
-        /// </summary>
+        /// <summary>A fresh empty instance of the same class as <paramref name="like"/>.</summary>
         private static IntPtr EmptyLike(IntPtr like)
         {
             if (!Memory.LooksLikeObject(like)) return IntPtr.Zero;
@@ -255,15 +182,10 @@ namespace InFalsusChartLoader
             IntPtr klass = Il2CppInterop.Runtime.IL2CPP.il2cpp_object_get_class(like);
             if (klass == IntPtr.Zero) return IntPtr.Zero;
 
-            // An array class has an element class; a plain one does not. `il2cpp_object_new` on an
-            // array class would make something with no bounds at all.
             IntPtr element = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_element_class(klass);
             if (element != IntPtr.Zero)
                 return Il2CppInterop.Runtime.IL2CPP.il2cpp_array_new(element, 0);
 
-            // The class has to be initialized first, the same as anywhere else this mod reaches a
-            // type by name: allocating from a class whose static constructor has not run gives
-            // nothing back.
             Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_class_init(klass);
             return Il2CppInterop.Runtime.IL2CPP.il2cpp_object_new(klass);
         }

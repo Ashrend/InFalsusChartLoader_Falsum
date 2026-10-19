@@ -4,21 +4,7 @@ using System.IO;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// The custom charts, keyed by the name the game will ask for them by.
-    ///
-    /// <para>
-    /// The game builds a chart's name as <c>{BaseName}{difficulty}.spc</c> and hands it to
-    /// <c>_s._VA</c>, which looks it up in StreamingAssets and throws when it is not there. This mod
-    /// answers that call for its own names, so the game's loader never sees them and its not-found
-    /// path is never reached.
-    /// </para>
-    /// <para>
-    /// The name is matched whole: the base has to be a folder this mod imported, and the character
-    /// before <c>.spc</c> has to be a difficulty digit. Anything else is not this mod's and is
-    /// passed straight through.
-    /// </para>
-    /// </summary>
+    /// <summary>The custom charts, keyed by the name the game requests them under.</summary>
     internal static unsafe class ChartCatalog
     {
         private const string Extension = ".spc";
@@ -27,24 +13,10 @@ namespace InFalsusChartLoader
         private static readonly Dictionary<string, ChartInfo> ByBase =
             new Dictionary<string, ChartInfo>(StringComparer.Ordinal);
 
-        /// <summary>
-        /// Registers a chart under the name the game will ask for it with — the `if` file's `id`.
-        ///
-        /// The game builds `{name}{difficulty}.spc` from that string, so it is the name this has to
-        /// answer to, and nothing in a run changes it: a name already in use is refused at
-        /// registration rather than renamed, which is why there is no un-registration beside this.
-        /// </summary>
+        /// <summary>Registers a chart under the name the game will request.</summary>
         internal static void Adopt(ChartInfo info) => ByBase[info.BaseName] = info;
 
-        /// <summary>
-        /// Answers a chart request. Returns false when the name is not one of ours, in which case the
-        /// caller must pass the call through untouched.
-        ///
-        /// On a name that is ours, the 32-byte tuple at <paramref name="result"/> is always written —
-        /// with the decoded chart if it decodes, and with the game's empty chart if it does not — and
-        /// the 40-byte <c>_R</c> is finished by clearing its source-text field, which is what the
-        /// game's own loader does.
-        /// </summary>
+        /// <summary>Answers a chart request; false when the name is not this mod's.</summary>
         internal static bool TryServe(IntPtr namePtr, IntPtr result)
         {
             string name = Memory.Text(namePtr, 128);
@@ -53,17 +25,11 @@ namespace InFalsusChartLoader
 
             if (!ByBase.TryGetValue(baseName, out ChartInfo info))
             {
-                // A chart name this mod does not own is worth a line: it is the game asking for a
-                // chart, and if it is one that should have been imported then the folder was dropped
-                // for a reason that is already in the log above.
                 Diagnostics.Info($"chart '{name}' is not ours; passing through");
                 return false;
             }
 
             string path = info.ChartPaths[difficulty];
-            // What the bytes were encoded under, and therefore what they can be decoded under. The
-            // file has the same name — its path was built from this string — so this is a statement
-            // about the encoding rather than a second name for the file.
             string seed = info.ChartNames[difficulty];
 
             bool decoded = false;
@@ -79,21 +45,8 @@ namespace InFalsusChartLoader
                                   Diagnostics.Describe(e));
             }
 
-            // A chart the import accepted and the play-through cannot decode is a file that changed
-            // underneath us. The game's own empty chart is the answer: the song plays, silently and
-            // with no notes, instead of the scene hanging on a thrown lookup — and it is that or
-            // nothing. The tuple the decoder left behind is never what is served in its place: for
-            // the one failure this exists for, a wrong seed, it is well formed and holds a garbage
-            // note list. A refusal here sends the name to the game's own loader, which is loud in
-            // the game's own log; unreachable while `ChartCodec.Resolve` requires `_hab`, and kept
-            // as a return rather than a skip so that it cannot pass silently if it ever is.
             if (!decoded && !ChartCodec.Empty(result)) return false;
 
-            // `_R._RC`. The game's loader always clears it, and the note loop that follows compares
-            // it against the previous load's value. Asked by name like every other field; a name
-            // that does not answer is reported where it is asked and the clear is skipped — the
-            // tuple is still served either way, because refusing here would send the name to the
-            // game's own loader, whose not-found path throws inside a coroutine.
             int sourceText = SourceTextField();
             if (sourceText >= 0) *(IntPtr*)(result + sourceText) = IntPtr.Zero;
             return true;
@@ -101,18 +54,14 @@ namespace InFalsusChartLoader
 
         private static int _sourceTextField = int.MinValue;
 
-        /// <summary>`_R._RC`'s offset, asked once — see <see cref="TryServe"/> for what a miss costs.</summary>
+        /// <summary>The offset of the field <see cref="TryServe"/> clears.</summary>
         private static int SourceTextField()
         {
             if (_sourceTextField == int.MinValue) _sourceTextField = FieldResolver.Field("_R", "_RC");
             return _sourceTextField;
         }
 
-        /// <summary>
-        /// Splits <c>{base}{digit}.spc</c>. The digit is the difficulty, so the base is everything
-        /// before it — which is how a folder named <c>song1</c> and a folder named <c>song</c> stay
-        /// distinct rather than one being read as the other's difficulty.
-        /// </summary>
+        /// <summary>Splits a chart name into its base name and difficulty.</summary>
         private static bool Split(string name, out string baseName, out int difficulty)
         {
             baseName = null;

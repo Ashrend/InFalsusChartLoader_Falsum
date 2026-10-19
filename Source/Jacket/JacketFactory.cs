@@ -5,54 +5,16 @@ using System.Reflection;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// Turns a PNG on disk into a `Material` the game can draw a jacket with.
-    ///
-    /// <para>
-    /// Everything here goes through the runtime rather than through the generated interop types.
-    /// Those types are convenient but this repository has already recorded that `Il2CppType.Of&lt;T&gt;()`
-    /// does not reliably produce a class pointer for generated assemblies, and a jacket is not worth
-    /// betting on it: reaching for `il2cpp_object_new` and the method table is more code and has one
-    /// failure mode instead of two. The generated assembly is still read, but only for the one thing
-    /// it is the only source of — a method's full signature, which is what tells nineteen
-    /// `Texture2D` constructors apart.
-    /// </para>
-    /// <para>
-    /// The two calls that can silently produce nothing are each followed by a check of the object
-    /// they were supposed to fill in, because a constructor that returns is not evidence that it
-    /// built anything and the difference does not surface until something else touches the object.
-    /// A check that cannot be made is not a failure: it is reported once, and the next piece of
-    /// evidence decides.
-    /// </para>
-    /// <para>
-    /// The shader is chosen by name and is allowed to be wrong. The only consumer of this Material
-    /// copies its `mainTexture` into a template the game already owns and discards the rest, so what
-    /// this has to get right is the pixels.
-    /// </para>
-    /// </summary>
+    /// <summary>Builds the materials a jacket or background is drawn with.</summary>
     internal static unsafe class JacketFactory
     {
-        /// <summary>
-        /// The texture formats to try, as `TextureFormat` values, in order of how well they carry
-        /// four-channel pixels.
-        ///
-        /// The first is the one this wants — `RGBA32` is four bytes in the order the decoder already
-        /// produces, so the array needs no conversion. It is not asked for blindly, because the
-        /// constructor refuses a format the device does not support, and that refusal arrives as
-        /// `ArgumentException: Failed SupportsTextureFormat; format is not a valid TextureFormat`
-        /// from inside Unity — a message about the format, not about this mod. `SystemInfo` answers
-        /// the question properly, so the format is picked rather than assumed.
-        /// </summary>
+        /// <summary>The texture formats to try.</summary>
         private static readonly int[] TextureFormats = { 4 /* RGBA32 */, 5 /* ARGB32 */, 3 /* RGB24 */ };
 
-        /// <summary>`Color32` is four bytes — red, green, blue, alpha — so decoded pixels fit it as-is.</summary>
+        /// <summary>`Color32` is four bytes.</summary>
         private const int Color32Size = 4;
 
-        /// <summary>
-        /// Shaders to try, in order. A name that resolves in the editor can be stripped from a build,
-        /// so the first is a preference and not an assumption — and if none resolves the jacket is
-        /// built anyway, because nothing ever reads this material's shader.
-        /// </summary>
+        /// <summary>Shaders to try.</summary>
         private static readonly string[] ShaderNames = { "Unlit/Texture", "Sprites/Default", "UI/Default" };
 
         private static IntPtr _textureClass;
@@ -62,14 +24,7 @@ namespace InFalsusChartLoader
 
         private static bool _resolved;
 
-        /// <summary>
-        /// Finds the four types a jacket is built from — and only those four.
-        ///
-        /// Each is asked for by name and reported by name when it is missing. An earlier version
-        /// required a fifth, `String`, and used it nowhere: a type this file never touches was able
-        /// to veto every jacket, and the only thing it said about it was that "the types" were not
-        /// all found. A dependency that is not used is a dependency that can only fail.
-        /// </summary>
+        /// <summary>Finds the four types a jacket is built from.</summary>
         private static bool Resolve()
         {
             if (_resolved) return true;
@@ -83,38 +38,20 @@ namespace InFalsusChartLoader
                         _shaderClass != IntPtr.Zero && _color32Class != IntPtr.Zero;
 
 #if DEBUG
-            // What the running game actually exposes for these types, which is not what Cecil reads
-            // off the same file: the generated `NativeMethodInfoPtr_*` fields are visible to Cecil
-            // and were not visible to reflection.
             JacketProbe.Report();
 #endif
 
             return _resolved;
         }
 
-        /// <summary>Where the types below live. The value types live somewhere else again.</summary>
+        /// <summary>Where the Unity types live.</summary>
         private const string Assembly = "UnityEngine.CoreModule.dll";
         private const string Namespace = "UnityEngine";
 
-        /// <summary>
-        /// The same assembly under the name reflection knows it by, which is not the file name.
-        ///
-        /// `GetIl2CppClass` wants the module the game's metadata records —
-        /// `UnityEngine.CoreModule.dll` — while an `Assembly` in the CLR is named
-        /// `UnityEngine.CoreModule` with no extension. Passing the file name to the second gives no
-        /// match and no exception, only an assembly that all exists and cannot be found.
-        /// </summary>
+        /// <summary>The same assembly under the name reflection knows it by.</summary>
         private const string AssemblyName = "UnityEngine.CoreModule";
 
-        /// <summary>
-        /// The constructor wanted, as its parameter type names in order —
-        /// `Texture2D(int, int, TextureFormat, bool, bool)`.
-        ///
-        /// Matched on this rather than on the generated field's name because the name is a string
-        /// this file would be guessing at, while the parameter list is what the runtime itself
-        /// reports. The two boolean parameters are what separate it from
-        /// `(int, int, TextureFormat, int, bool)`, which has the same length and the same name.
-        /// </summary>
+        /// <summary>The constructor wanted, as its parameter type names in order.</summary>
         private static readonly string[] ConstructorWanted =
             { "Int32", "Int32", "TextureFormat", "Boolean", "Boolean" };
 
@@ -125,15 +62,9 @@ namespace InFalsusChartLoader
             IntPtr klass = FieldResolver.ClassPointer(typeName);
             if (klass != IntPtr.Zero) return klass;
 
-            // The generated store is filled by the generated type's own initialiser, and a type
-            // nothing has touched yet may not have run one. Asking the runtime directly does not
-            // depend on that, so it is tried before giving up.
             klass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(assembly, namespaze, typeName);
             if (klass != IntPtr.Zero)
             {
-                // The generated types do this in their own initialiser, right after they resolve the
-                // class and before they look anything up on it. A class reached this way has not had
-                // it done, and querying an uninitialised class is not safe.
                 Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_class_init(klass);
 
                 Diagnostics.Info($"{typeName} found by assembly, not by the generated store");
@@ -144,29 +75,11 @@ namespace InFalsusChartLoader
             return IntPtr.Zero;
         }
 
-        /// <summary>
-        /// Builds a Material showing the PNG at <paramref name="pngPath"/>. Zero, with a reason, when
-        /// the file is not a PNG this mod can decode or the game's own types cannot be reached.
-        ///
-        /// One build per file for the whole session, keyed by the path: a folder naming one picture
-        /// for all four difficulties asks four times, and a folder that points `background` at its
-        /// own `jacket` asks again from the other catalogue — four references to one texture is the
-        /// result in both cases, which is also what the game's own data does.
-        /// </summary>
+        /// <summary>Builds a material showing the PNG at <paramref name="pngPath"/>.</summary>
         internal static IntPtr Build(string pngPath, out string reason) =>
             Build(pngPath, "jacket", out reason);
 
-        /// <summary>
-        /// The same, with the word the log line uses for what was built — a background is decoded by
-        /// the same code and should not be reported as a jacket. The word is <b>part of the cache
-        /// key</b>: a folder that points `background` at its own `jacket` asks twice for one file,
-        /// and the second ask must not be answered with the first's material — the jacket is drawn
-        /// on a card and the background on the game's backdrop quad, and only the background's
-        /// material gets cloned from the game's own at the claim (`BackgroundClone`). One more
-        /// texture per such folder is what that costs, and it was paid on the first run of this:
-        /// the background was answered with the jacket's material, and the clone it needed was
-        /// never made.
-        /// </summary>
+        /// <summary>The same build, for a jacket or a background.</summary>
         internal static IntPtr Build(string pngPath, string what, out string reason)
         {
             reason = null;
@@ -179,10 +92,7 @@ namespace InFalsusChartLoader
             return material;
         }
 
-        /// <summary>
-        /// Every build so far, by the word it was built for and its absolute path. Successes only —
-        /// a miss is not an answer.
-        /// </summary>
+        /// <summary>Every successful build, by kind and path.</summary>
         private static readonly Dictionary<string, IntPtr> Built =
             new Dictionary<string, IntPtr>(StringComparer.Ordinal);
 
@@ -205,10 +115,6 @@ namespace InFalsusChartLoader
             }
             catch (Exception e)
             {
-                // On Release this catch body is empty, because the message below is Debug-only and
-                // it is the only thing that reads `e`. The parameter stays named rather than being
-                // dropped: a named one that a `#if` block uses compiles on both sides, where an
-                // anonymous one would have to be paired with a separately named inner catch.
 #if DEBUG
                 reason = $"{Path.GetFileName(pngPath)} could not be read: {Diagnostics.Describe(e)}";
 #else
@@ -230,14 +136,7 @@ namespace InFalsusChartLoader
             return material;
         }
 
-        /// <summary>
-        /// A Material showing a texture this mod did not decode — used by the video background, whose
-        /// picture arrives from a `VideoPlayer` as a render texture rather than from a file.
-        ///
-        /// The shader is chosen the same way and is allowed to be wrong for the same reason: what a
-        /// background consumer reads is the texture this material carries, and the rest of it is a
-        /// template the game copies from.
-        /// </summary>
+        /// <summary>A material showing a texture this mod did not decode.</summary>
         internal static IntPtr BuildFromTexture(IntPtr texture, string what, out string reason)
         {
             reason = null;
@@ -254,23 +153,13 @@ namespace InFalsusChartLoader
             return material;
         }
 
-        /// <summary>
-        /// A `Texture2D` holding the decoded pixels.
-        ///
-        /// The elements of a `Color32[]` are four bytes in exactly the order the decoder produces, so
-        /// the copy is the whole conversion -- but only after the rows are turned around. Unity's
-        /// `SetPixels32` is documented as taking them bottom to top and a PNG stores them top to
-        /// bottom, so the two conventions differ on one axis and the copy has to say which it means.
-        /// </summary>
+        /// <summary>A <c>Texture2D</c> holding the decoded pixels.</summary>
         private static IntPtr BuildTexture(Png.Image image, out string reason)
         {
             reason = null;
 
             int pixels = image.Width * image.Height;
 
-            // One line per native call. A call that raises leaves no stack to read -- the runtime
-            // surfaces it as an SEH exception at whatever frame happened to be current -- so the
-            // only way to learn which one it was is to have written down the last one that worked.
             Diagnostics.Info("jacket step: allocating the Color32 array");
             IntPtr colors = Il2CppInterop.Runtime.IL2CPP.il2cpp_array_new(_color32Class, (ulong)pixels);
             if (colors == IntPtr.Zero)
@@ -281,11 +170,6 @@ namespace InFalsusChartLoader
                 return IntPtr.Zero;
             }
 
-            // Row by row, last row first. Unity's `SetPixels32` takes the colours left to right and
-            // **bottom to top**, while a PNG stores its rows top to bottom -- and the decoder here
-            // produces them in PNG order, verified byte for byte against PIL. So a straight copy
-            // builds a correctly-sized picture standing on its head, which is exactly what it did.
-            // The columns are left alone: Unity's horizontal order already matches PNG's.
             byte* destination = (byte*)(colors + Offsets.Runtime.ArrayDataOffset);
             long rowBytes = (long)image.Width * Color32Size;
 
@@ -309,10 +193,6 @@ namespace InFalsusChartLoader
                 return IntPtr.Zero;
             }
 
-            // Texture2D(int width, int height, TextureFormat format, bool mipChain, bool linear) --
-            // by signature, because five constructors take five arguments and one of the others is
-            // (Int32, Int32, TextureFormat, Int32, Boolean): same name, same count, and an int where
-            // this one has the first bool.
             Diagnostics.Info("jacket step: looking up Texture2D..ctor(int,int,TextureFormat,bool,bool)");
             IntPtr constructor = ConstructorBySignature("Texture2D", ConstructorWanted);
             if (constructor == IntPtr.Zero)
@@ -334,8 +214,6 @@ namespace InFalsusChartLoader
 
             Diagnostics.Info($"jacket step: calling Texture2D..ctor with format {format}");
 
-            // Five value-type arguments, so five addresses — see Invoke. The bytes have to stay put
-            // for the length of the call, which is what locals in this frame are for.
             int width = image.Width;
             int height = image.Height;
             int textureFormat = format;
@@ -350,9 +228,6 @@ namespace InFalsusChartLoader
             ctorArgs[4] = (IntPtr)(&linear);
             if (!Invoke(constructor, texture, ctorArgs, 5, out reason)) return IntPtr.Zero;
 
-            // A constructor that returns is not a texture that exists. Two things separate the two
-            // without trusting either: the engine's own pointer behind the object, and the object's
-            // answer when asked how wide it is.
             if (IsKnownToHaveNoNativeObject(texture))
             {
 #if DEBUG
@@ -402,13 +277,7 @@ namespace InFalsusChartLoader
             return texture;
         }
 
-        /// <summary>
-        /// A `Material` whose main texture is <paramref name="texture"/>.
-        ///
-        /// Only the texture is ever read from it, so a shader that fails to resolve is not fatal —
-        /// it is reported, and the jacket is built anyway, because the alternative is no jacket at
-        /// all over a property nothing looks at.
-        /// </summary>
+        /// <summary>A <c>Material</c> whose main texture is <paramref name="texture"/>.</summary>
         private static IntPtr BuildMaterial(IntPtr texture, string what, out string reason)
         {
             reason = null;
@@ -419,8 +288,6 @@ namespace InFalsusChartLoader
 
             if (find != IntPtr.Zero)
             {
-                // Tried in turn because a name that resolves in the editor can be stripped from a
-                // build; the last is the one Unity guarantees for UI.
                 foreach (string name in ShaderNames)
                 {
                     findArgs[0] = Il2CppInterop.Runtime.IL2CPP.ManagedStringToIl2Cpp(name);
@@ -465,9 +332,6 @@ namespace InFalsusChartLoader
             ctorArgs[0] = shader;
             if (!Invoke(constructor, material, ctorArgs, 1, out reason)) return IntPtr.Zero;
 
-            // Same check as the texture's, for the same reason: a material is a managed shell until
-            // a native one exists behind it. Unlike the texture there is no second question to ask
-            // it here, so an unreadable `m_CachedPtr` leaves this unchecked rather than failed.
             if (IsKnownToHaveNoNativeObject(material))
             {
 #if DEBUG
@@ -494,15 +358,7 @@ namespace InFalsusChartLoader
             return material;
         }
 
-        /// <summary>
-        /// A clone of a material the game loaded, carrying every property it was authored with —
-        /// shader, queue, z-test, blend, keywords and the mask slots alike — which a material built
-        /// from a shader alone has none of. See `BackgroundClone`.
-        ///
-        /// Every reason here is written whether or not this is a Debug build: a failure walks out to
-        /// one Release-visible Error in `Hooks.CloneBackground`, so the string has to exist in
-        /// Release to be readable there.
-        /// </summary>
+        /// <summary>A clone of a material the game loaded.</summary>
         internal static unsafe IntPtr CloneFrom(IntPtr source, out string reason)
         {
             reason = null;
@@ -540,10 +396,10 @@ namespace InFalsusChartLoader
             return material;
         }
 
-        /// <summary>The constructor a clone wants: `Material(Material source)`.</summary>
+        /// <summary>The constructor a clone wants.</summary>
         private static readonly string[] MaterialCopyWanted = { "Material" };
 
-        /// <summary>A material's picture, asked of the material itself rather than remembered.</summary>
+        /// <summary>A material's main texture.</summary>
         internal static IntPtr MainTexture(IntPtr material, out string reason)
         {
             reason = null;
@@ -566,7 +422,7 @@ namespace InFalsusChartLoader
             return texture;
         }
 
-        /// <summary>Puts a picture on a material, by the same call the build makes.</summary>
+        /// <summary>Puts a picture on a material.</summary>
         internal static unsafe bool SetMainTexture(IntPtr material, IntPtr texture, out string reason)
         {
             reason = null;
@@ -585,45 +441,11 @@ namespace InFalsusChartLoader
 
         // ---------------------------------------------------------------- runtime plumbing
 
-        /// <summary>
-        /// The native entry point of a method, or zero.
-        ///
-        /// The entry point is the first field of the `MethodInfo`, which is what the sibling mod's
-        /// resolver already relies on.
-        ///
-        /// This matches on name and parameter count alone, so it is only safe for a method with one
-        /// overload. `Material..ctor` and the `SetPixels32`/`Apply`/`get_width` calls all pass that
-        /// test; the texture constructors do not, and the one this file wanted was one of five with
-        /// the same arity. Use <see cref="ConstructorBySignature"/> for those.
-        /// </summary>
+        /// <summary>The native entry point of a method, or zero.</summary>
         private static IntPtr Entry(IntPtr klass, string name, int parameters) =>
             Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_method_from_name(klass, name, parameters);
 
-        /// <summary>
-        /// A constructor's `MethodInfo`, picked by its whole parameter list rather than by its arity.
-        ///
-        /// <para>
-        /// `Texture2D` has nineteen constructors and five of them take five arguments. Two of those
-        /// five are `(Int32, Int32, TextureFormat, Int32, Boolean)` and
-        /// `(Int32, Int32, TextureFormat, Boolean, Boolean)` — same name, same count, and the third
-        /// and fourth parameters mean different things. `il2cpp_class_get_method_from_name` cannot
-        /// tell them apart, and it does not fail when it picks wrong: it hands back a real
-        /// constructor, the call returns normally, and the object is left without a texture. The
-        /// next call on it is what raises, which is a long way from the mistake.
-        /// </para>
-        /// <para>
-        /// Enumerated through the game's own API rather than through reflection, because reflection
-        /// does not see this type's methods at all. `UnityEngine.CoreModule` is one of the
-        /// assemblies the interop layer substitutes, and for those the CLR reports every field and
-        /// no method — the generated assembly on disk declares 187 methods on `Texture2D` while
-        /// `Type.GetMethods` answers with none, and `GetField` fails by name on a field that is
-        /// plainly there. Fields survive that substitution; methods do not.
-        /// </para>
-        /// <para>
-        /// Every candidate is logged, so a miss says what was there instead of only that nothing
-        /// matched.
-        /// </para>
-        /// </summary>
+        /// <summary>A constructor's <c>MethodInfo</c>, picked by its parameter list.</summary>
         private static IntPtr ConstructorBySignature(string typeName, string[] wanted)
         {
             if (Constructors.TryGetValue(typeName, out IntPtr known)) return known;
@@ -633,16 +455,7 @@ namespace InFalsusChartLoader
             return found;
         }
 
-        /// <summary>
-        /// Constructors already looked for, by type name. Zero means the search ran and found
-        /// nothing, and that is remembered too.
-        ///
-        /// Keyed by the type alone because the wanted parameter list is a constant of this file, one
-        /// per type. Worth caching for two reasons: the walk reads every method the class has, and it
-        /// logs the first <see cref="MethodsToLog"/> of them by name — so a song with four pictures
-        /// walked `Texture2D` four times and printed four identical thirty-line listings, which was
-        /// most of a debug log's length for one song. The answer cannot change between jackets.
-        /// </summary>
+        /// <summary>Constructors already looked for, by type name.</summary>
         private static readonly Dictionary<string, IntPtr> Constructors =
             new Dictionary<string, IntPtr>(StringComparer.Ordinal);
 
@@ -657,15 +470,8 @@ namespace InFalsusChartLoader
                     return IntPtr.Zero;
                 }
 
-                // The generated code does this the moment it resolves a class, and `Require` does it
-                // for the three types it reaches the same way. A class reached straight from the
-                // runtime has had nothing run for it, and its methods are not safe to call until
-                // something has.
                 Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_class_init(klass);
 
-                // Capped, and counted: an enumeration that never ends allocates its way to an
-                // OutOfMemoryException that says nothing about which call was at fault. A class has
-                // one method per declaration, so the cap only ever fires on a broken walk.
                 IntPtr iter = IntPtr.Zero;
                 IntPtr method;
                 int walked = 0;
@@ -688,10 +494,6 @@ namespace InFalsusChartLoader
 
                     if (!Matches(method, wanted)) continue;
 
-                    // The pointer came back from a walk, so before it is handed to the runtime it is
-                    // asked who it belongs to. A MethodInfo that cannot name its own class is not one
-                    // that can be invoked, and the invoke would fail with nothing to say — which is
-                    // what an unnamed exception turned out to mean.
                     string owner = DeclaringTypeName(method);
                     if (owner != typeName)
                     {
@@ -703,10 +505,6 @@ namespace InFalsusChartLoader
                     Diagnostics.Info($"{typeName}({string.Join(", ", wanted)}) found among the class's methods");
 
 #if DEBUG
-                    // The bytes at that pointer, so that "the invoke raised nothing" stops being the
-                    // only thing known about it. A MethodInfo is a run of pointers whose first is the
-                    // code; one that does not look like that is not one the runtime can call, and
-                    // that is visible here rather than only as an unnamed exception later.
                     Diagnostics.Info($"  the constructor's MethodInfo is at 0x{method.ToInt64():X}");
                     Diagnostics.Info($"  class=0x{klass.ToInt64():X}  code={Words(method, 12)}");
 #endif
@@ -717,10 +515,6 @@ namespace InFalsusChartLoader
                 Diagnostics.Info($"{typeName}: walked {walked} method(s)");
 
 #if DEBUG
-                // Every constructor the class has, so that a miss says what it was choosing between.
-                // The whole block is Debug-only rather than just its logging calls: a string built
-                // inside a `[Conditional]` argument is still a string in the assembly, which is the
-                // shape the artifact check exists to catch.
                 int seen = 0;
                 iter = IntPtr.Zero;
                 while ((method = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_methods(klass, ref iter)) != IntPtr.Zero)
@@ -763,26 +557,11 @@ namespace InFalsusChartLoader
             return true;
         }
 
-        /// <summary>
-        /// A method's name, or null.
-        ///
-        /// The interop assembly offers each of these twice: once returning the raw pointer, and once
-        /// returning the string. The second is the one to take. It reads to a terminator with
-        /// `Marshal.PtrToStringUTF8`, where converting a raw pointer goes through
-        /// `Il2CppStringToManaged`, which believes the length field it finds — and a pointer that is
-        /// not a string yields a length that is not a length, which is how a walk ends in an
-        /// OutOfMemoryException that names no call.
-        /// </summary>
+        /// <summary>A method's name, or null.</summary>
         private static string Name(IntPtr method) =>
             Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_name_(method);
 
-        /// <summary>
-        /// The first of <see cref="TextureFormats"/> this device can actually hold, or zero when it
-        /// can hold none. Zero is not a `TextureFormat`, so it cannot be mistaken for a result.
-        ///
-        /// Asked once and remembered: the answer is a property of the machine and does not change
-        /// while the game runs.
-        /// </summary>
+        /// <summary>The first supported texture format, or zero.</summary>
         private static int SupportedFormat()
         {
             if (_format != int.MinValue) return _format;
@@ -803,14 +582,7 @@ namespace InFalsusChartLoader
 
         private static int _format = int.MinValue;
 
-        /// <summary>
-        /// Whether the device supports a `TextureFormat`, asked of `SystemInfo`.
-        ///
-        /// Every way of failing to ask is reported separately, because the caller turns a false into
-        /// a message about the device — and "this machine cannot hold RGBA32" and "the question could
-        /// not be put to it" are different facts that have been read as the same one. Each of these
-        /// used to be a bare `return false`.
-        /// </summary>
+        /// <summary>Whether the device supports a <c>TextureFormat</c>.</summary>
         private static bool SupportsFormat(int format)
         {
             IntPtr klass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(Assembly, Namespace, "SystemInfo");
@@ -849,12 +621,7 @@ namespace InFalsusChartLoader
             return *(byte*)(boxed + Offsets.Runtime.BoxedData) != 0;
         }
 
-        /// <summary>
-        /// The first words at an address, as hex, for comparing one structure with another.
-        ///
-        /// Debug-only, and deliberately raw: the point is to see what the runtime actually put
-        /// there, not what any header in this repository says should be there.
-        /// </summary>
+        /// <summary>The first words at an address, as hex.</summary>
         internal static string Words(IntPtr address, int count)
         {
 #if DEBUG
@@ -871,7 +638,7 @@ namespace InFalsusChartLoader
 #endif
         }
 
-        /// <summary>The class a method says it belongs to, or null when it cannot say.</summary>
+        /// <summary>The class a method says it belongs to, or null.</summary>
         private static string DeclaringTypeName(IntPtr method)
         {
             IntPtr klass = Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_declaring_type(method);
@@ -879,10 +646,7 @@ namespace InFalsusChartLoader
             return Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_name_(klass);
         }
 
-        /// <summary>
-        /// A type's name, without the namespace and without the generic arguments — which is how the
-        /// wanted parameter list is written.
-        /// </summary>
+        /// <summary>A type's name, without namespace or generic arguments.</summary>
         private static string TypeName(IntPtr type)
         {
             IntPtr klass = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_from_type(type);
@@ -890,18 +654,7 @@ namespace InFalsusChartLoader
             return Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_name_(klass);
         }
 
-        /// <summary>
-        /// The generated type for a name, from the assembly the game's own code loads it from.
-        ///
-        /// <see cref="InteropTypeIndex"/> is deliberately built from the `Il2Cpp*` assemblies only,
-        /// so the Unity types are not in it — but the generated `UnityEngine.CoreModule` assembly
-        /// still exists and still has the per-method fields. It is found among the loaded assemblies
-        /// rather than resolved by name, which would need the CLR to locate the file itself.
-        ///
-        /// A miss here used to be reported as "the type has no generated type", which was true of
-        /// the search and not of the world: the name being compared was the module's file name, so
-        /// no assembly could ever match. It now says which name it looked for.
-        /// </summary>
+        /// <summary>The generated type for a name, from the loaded assembly.</summary>
         private static Type GeneratedType(string typeName)
         {
             foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
@@ -914,16 +667,7 @@ namespace InFalsusChartLoader
             return null;
         }
 
-        /// <summary>
-        /// Whether an object is known to have no native object behind it — false when it has one, and
-        /// false when that cannot be told.
-        ///
-        /// Unity keeps the pointer in `m_CachedPtr` on the base `Object`, and it stays zero until a
-        /// native object exists. Reading it is a second opinion, not the verdict: the field is
-        /// inherited and asked for by name, so a build where the name does not resolve would make
-        /// every jacket fail on a check that answers nothing. When it cannot be read the answer is
-        /// "not known", and the caller's own evidence decides.
-        /// </summary>
+        /// <summary>Whether an object is known to have no native object behind it.</summary>
         private static bool IsKnownToHaveNoNativeObject(IntPtr instance)
         {
             if (_cachedPtrOffset == int.MinValue) _cachedPtrOffset = CachedPointerOffset();
@@ -933,23 +677,7 @@ namespace InFalsusChartLoader
             return Memory.Ptr(instance + _cachedPtrOffset) == IntPtr.Zero;
         }
 
-        /// <summary>
-        /// Where `UnityEngine.Object.m_CachedPtr` sits, or zero when it cannot be reached — and the
-        /// zero is what makes this asked once rather than once per jacket.
-        ///
-        /// <para>
-        /// Reached by assembly and name, which is the whole of the fix. It used to go through
-        /// <see cref="FieldResolver"/>, and that cannot work for a Unity type: the index behind it is
-        /// built from the `Il2Cpp*` assemblies only (see <see cref="InteropTypeIndex"/>), so a lookup
-        /// for `Object` was not a slow answer, it was a permanent miss. It therefore failed on every
-        /// jacket, every time, and the warning said so — while the comment beside it claimed the
-        /// failure was remembered. Two lines disagreeing, and the code was the wrong one.
-        /// </para>
-        /// <para>
-        /// The field is on the base `Object`, which every built object's class descends from, so the
-        /// offset is the same on a `Texture2D` and on a `Material`.
-        /// </para>
-        /// </summary>
+        /// <summary>Where <c>UnityEngine.Object.m_CachedPtr</c> sits, or zero.</summary>
         private static int CachedPointerOffset()
         {
             try
@@ -992,30 +720,7 @@ namespace InFalsusChartLoader
 
         private static int _cachedPtrOffset = int.MinValue;
 
-        /// <summary>
-        /// Calls a method the way the generated interop calls it.
-        ///
-        /// The generated wrappers for these methods build an array of the arguments and go through
-        /// `il2cpp_runtime_invoke`; they do not jump to the address in the method's own structure.
-        /// That is not a detail this mod is free to improve on — calling the address directly is what
-        /// left a `Texture2D` that had run its constructor without becoming a texture, and the next
-        /// call on it raised.
-        ///
-        /// <para>
-        /// Each entry of <paramref name="args"/> is a pointer to the argument's own bytes. Not a box:
-        /// the invoker dereferences it directly — `Texture2D..ctor`'s reads its five as `**args`,
-        /// `*args[1]`, `*args[2]`, and one byte each at `args[3]` and `args[4]` — and
-        /// `il2cpp_runtime_invoke` hands the array over untouched. A boxed argument therefore arrives
-        /// as the low bytes of the box's class pointer, which is how every texture format asked of
-        /// `SystemInfo` came back "not a valid TextureFormat" and how a constructor can run and build
-        /// nothing. Reference arguments are unaffected: a reference's value *is* its pointer, so
-        /// passing the object is passing the pointer.
-        /// </para>
-        /// <para>
-        /// The return is the other way round — the runtime boxes a value-type result, which is why
-        /// the callers read it at <see cref="Offsets.Runtime.BoxedData"/>.
-        /// </para>
-        /// </summary>
+        /// <summary>Calls a method through <c>il2cpp_runtime_invoke</c>.</summary>
         private static bool Invoke(IntPtr method, IntPtr instance, IntPtr* args, int count, out string reason)
         {
             reason = null;
@@ -1034,25 +739,13 @@ namespace InFalsusChartLoader
 
             if (raised == IntPtr.Zero) return true;
 
-            // Guarded like every other reason in this file, and this one was missed for a while: it
-            // is the only `reason` here that is not assigned inside a `#if DEBUG` already, so it was
-            // the only one whose text shipped. Nothing in a Release build reads it -- the whole chain
-            // from here to the log runs through `Diagnostics.Warn` -- so the literal was a kilobyte
-            // of dead text, which is what the artifact check exists to keep out and what it could
-            // not catch while this phrase was not on its list. It is on the list now.
 #if DEBUG
             reason = $"a call into the game's rendering types raised: {Raised.Text(raised)}";
 #endif
             return false;
         }
 
-        /// <summary>
-        /// How wide a `Texture2D` says it is, or -1 when it will not say.
-        ///
-        /// The getter lives on the base `Texture`, so it is looked up there. A width that comes back
-        /// as the value the constructor was given is the one piece of evidence available here that a
-        /// native texture exists — see <see cref="IsKnownToHaveNoNativeObject"/> for the other.
-        /// </summary>
+        /// <summary>How wide a <c>Texture2D</c> says it is, or -1.</summary>
         private static int WidthOf(IntPtr texture)
         {
             IntPtr getter = Entry(_textureClass, "get_width", 0);
@@ -1072,7 +765,7 @@ namespace InFalsusChartLoader
         /// <summary>How many methods a class may report before the walk is treated as broken.</summary>
         private const int MethodsWalkLimit = 4096;
 
-        /// <summary>How many entries of a method walk are logged by name, so a stall is visible.</summary>
+        /// <summary>How many entries of a method walk are logged by name.</summary>
         private const int MethodsToLog = 30;
     }
 }

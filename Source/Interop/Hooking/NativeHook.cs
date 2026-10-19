@@ -2,26 +2,7 @@ using System;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// The one place a detour is attached, so the twenty-two detours do not name a loader.
-    ///
-    /// <para>
-    /// Every member this class exposes is exactly what the detour files already used from
-    /// `MelonLoader.NativeUtils.NativeHook&lt;T&gt;`: an initializer that sets <see cref="Target"/>
-    /// and <see cref="Detour"/>, <see cref="Attach"/>, <see cref="Trampoline"/>, and
-    /// <see cref="Detach"/>.
-    /// </para>
-    /// <para>
-    /// Both backends use Dobby. The MelonLoader one forwards to `MelonLoader.NativeUtils.NativeHook`,
-    /// which is Dobby underneath. The BepInEx one calls the `dobby.dll` BepInEx ships in its own
-    /// core folder. That is not a preference: the first BepInEx build used
-    /// `MonoMod.RuntimeDetour.NativeDetour`, and the game died with
-    /// "attempted to call a UnmanagedCallersOnly method from managed code" the first time a hooked
-    /// method was reached (the minidump's crash thread has the IL2CPP runtime as its return
-    /// address). The detours and their bodies are the same ones the MelonLoader build has run for
-    /// months, so the difference was the engine, and Dobby is the engine known to work here.
-    /// </para>
-    /// </summary>
+    /// <summary>A native hook: it detours a game function and offers the function it replaced.</summary>
     internal sealed unsafe class NativeHook<T> where T : Delegate
     {
 #if MELONLOADER
@@ -51,8 +32,6 @@ namespace InFalsusChartLoader
 
             private static IntPtr Load()
             {
-                // BepInEx loads its own copy; by name returns that one. The path is the fallback for
-                // a host that has not loaded it yet.
                 if (System.Runtime.InteropServices.NativeLibrary.TryLoad("dobby.dll", out IntPtr loaded))
                     return loaded;
 
@@ -75,7 +54,7 @@ namespace InFalsusChartLoader
             if (_target == IntPtr.Zero || Detour == IntPtr.Zero) return;
 
             IntPtr origin;
-            if (Dobby.Hook(_target, Detour, &origin) != 0) return;   // `Landed` reports it
+            if (Dobby.Hook(_target, Detour, &origin) != 0) return;
 
             _trampoline = System.Runtime.InteropServices.Marshal.GetDelegateForFunctionPointer<T>(origin);
         }

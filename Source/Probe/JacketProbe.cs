@@ -3,23 +3,7 @@ using System.Reflection;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// Debug-only: what the running game actually exposes for the types a jacket is built from.
-    ///
-    /// <para>
-    /// This exists because reflection and the file on disk disagree about these types, and the
-    /// answer is worth having in the log rather than in a note. `UnityEngine.CoreModule` is one of
-    /// the assemblies the interop layer substitutes. For those, the CLR reports every field and no
-    /// method: `Texture2D` in the assembly declares 187 methods, `Type.GetMethods` answers with
-    /// none, and `GetField` fails by name on a field that is plainly present — though the same
-    /// field is found when the list is walked by hand. Fields survive the substitution; methods do
-    /// not, and a name lookup does not.
-    /// </para>
-    /// <para>
-    /// Nothing should be resolved through reflection on a type in this assembly. The game's own
-    /// `il2cpp_class_get_methods` sees the methods, and that is what the jacket uses.
-    /// </para>
-    /// </summary>
+    /// <summary>Debug-only report of the generated Unity types.</summary>
     internal static class JacketProbe
     {
         private const BindingFlags AnyField =
@@ -91,9 +75,6 @@ namespace InFalsusChartLoader
             }
             Diagnostics.Info($"probe:     ({native} field(s) named NativeMethodInfoPtr*, showing up to 5)");
 
-            // The field Cecil says is there. GetField is asked for it by name, and then the whole
-            // list is searched by hand, so a null answer says whether the field is absent or the
-            // lookup is.
             FieldInfo byName = null;
             try { byName = t.GetField(CtorField, BindingFlags.Public | BindingFlags.Static); }
             catch (Exception e) { Diagnostics.Info($"probe:     GetField threw {e.GetType().Name}"); }

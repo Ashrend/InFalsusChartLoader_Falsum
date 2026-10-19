@@ -7,15 +7,7 @@ using MelonLoader;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// MelonLoader's entry point: four callbacks, each handing over to <see cref="ModCore"/>.
-    ///
-    /// <para>
-    /// The work itself lives in <see cref="ModCore"/> rather than here so that a second loader can
-    /// call the same three stages without copying them. This class carries only what MelonLoader
-    /// itself needs: the base class, the assembly attributes, and the callback names.
-    /// </para>
-    /// </summary>
+    /// <summary>MelonLoader's entry point; every callback hands over to <see cref="ModCore"/>.</summary>
     public class ChartLoaderMod : MelonMod
     {
         public override void OnInitializeMelon() => ModCore.Loaded();

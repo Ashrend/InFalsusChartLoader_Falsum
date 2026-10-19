@@ -60,7 +60,7 @@
 "charter": [null, null, null, "Xing_W"],
 "lv": [null, null, null, 15]
 ```
-因此，以下为写法合法：
+因此，以下写法合法：
 ```json
 {
   "charter": ["Skytarry", "MagicNeko", null, "Xing_W"],

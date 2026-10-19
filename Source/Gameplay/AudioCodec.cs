@@ -3,38 +3,14 @@ using System.IO;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// Undoing the game's audio obfuscation — in the opposite direction, on purpose.
-    ///
-    /// <para>
-    /// A song's audio on disk is <c>keystream(_MJA(plaintext))</c>. <c>_MJA</c> (an 8-byte fixed-key
-    /// XOR) is removed by managed code inside the reader; the keystream is removed afterwards by
-    /// <c>ifapp_fmod_native_async_complete_transform</c>. A custom file has neither layer — it is a
-    /// plain Ogg — so the bytes this mod hands over have to come out of that pipeline equal to the
-    /// file, and the way to arrange that is to apply the keystream <b>to the file, once, up
-    /// front</b>: it is an XOR, so the game's own pass cancels it exactly.
-    /// </para>
-    /// <para>
-    /// Only the keystream is applied here, not <c>_MJA</c>: this mod serves its bytes by filling the
-    /// buffer the reader would have filled, which skips the reader and with it that layer. Applying
-    /// it too would leave the audio XOR-ed once.
-    /// </para>
-    /// <para>
-    /// The keystream is a function of file position, and its seed is the file's own length — both
-    /// known here — so the transform is computable at load time and the read path is a copy.
-    /// </para>
-    /// </summary>
+    /// <summary>Turns a plain audio file into the bytes the game's reader expects.</summary>
     internal static class AudioCodec
     {
         private const ulong Gold = 0x9E3779B97F4A7C15;
         private const ulong Mul1 = 0xD6E8FEB86659FD93;
         private const ulong Mul2 = 0xA24BAED4963EE407;
 
-        /// <summary>
-        /// A song's audio, already carrying the keystream, ready to be copied into whatever buffer
-        /// the game asks for. <see cref="Bytes"/> is what goes on the wire; it is the same length as
-        /// the file, because an XOR does not change length.
-        /// </summary>
+        /// <summary>A song's audio with the game's keystream applied.</summary>
         internal sealed class Prepared
         {
             internal byte[] Bytes;
@@ -73,9 +49,6 @@ namespace InFalsusChartLoader
 
             ulong seed = unchecked(Gold * (uint)bytes.Length);
 
-            // A word covers eight positions, so it is computed once per aligned group rather than
-            // once per byte; the first and last groups are partial because the file need not start
-            // or end on an eight-byte boundary relative to what is being read.
             int i = 0;
             while (i < bytes.Length)
             {
@@ -90,7 +63,7 @@ namespace InFalsusChartLoader
             return new Prepared { Bytes = bytes };
         }
 
-        /// <summary>One 64-bit keystream word, for the eight file positions starting at <c>n * 8</c>.</summary>
+        /// <summary>One keystream word.</summary>
         private static ulong Word(long n, ulong seed)
         {
             ulong t = unchecked(Mul1 * (ulong)n + seed);

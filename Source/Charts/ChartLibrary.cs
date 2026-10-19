@@ -5,22 +5,7 @@ using System.Reflection;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// The <c>Charts/</c> folder: where it is, and what is in it.
-    ///
-    /// <para>
-    /// The folder sits beside the <c>mod</c> folder the DLL was loaded from — the DLL in
-    /// <c>&lt;root&gt;/mod/InFalsusChartLoader.dll</c> reads <c>&lt;root&gt;/Charts</c>. That layout is
-    /// the one the caller asked for and is why this class uses the assembly's own location, which is
-    /// the one thing the sibling mod in this repository deliberately never does.
-    /// </para>
-    /// <para>
-    /// A folder is imported whole or not at all. Its four charts are decoded once, here, rather than
-    /// when the song is played: a chart that the game's decoder rejects would otherwise be a silent
-    /// empty play-through, and the point of reading them now is that a broken folder never reaches
-    /// the song list in the first place.
-    /// </para>
-    /// </summary>
+    /// <summary>The <c>Charts/</c> folder: where it is, and what it contains.</summary>
     internal static class ChartLibrary
     {
         /// <summary>The folder name to look for, and the name in the "beside the mod folder" rule.</summary>
@@ -41,31 +26,16 @@ namespace InFalsusChartLoader
             return null;
         }
 
-        /// <summary>
-        /// Where the charts are, creating it if it is not there.
-        ///
-        /// Beside the mod folder first — <c>&lt;root&gt;/Charts</c>, where <c>&lt;root&gt;</c> is the
-        /// parent of the folder the DLL was loaded from — because that is the layout this mod was
-        /// asked for. Beside the DLL second, because "next to the mod folder" and "next to the DLL"
-        /// are one sentence read two ways and only one of them can be right in a given install.
-        ///
-        /// If neither exists the first is created, empty, and returned: the answer to "where do I put
-        /// charts" should be a folder someone can open, not a path in a log.
-        /// </summary>
+        /// <summary>Where the charts are, creating the folder if it is not there.</summary>
         internal static string Locate()
         {
             string mod = ModFolder();
             if (mod == null) return null;
 
-            // Beside the mod folder first, which is the layout this mod was asked for. Beside the DLL
-            // second, because "the folder next to the mod" and "the folder next to the DLL" are the
-            // same sentence read two ways and only one of them can be right in a given install.
             DirectoryInfo parent = Directory.GetParent(mod);
             string[] candidates =
             {
 #if BEPINEX
-                // BepInEx puts plugins in `<game>/BepInEx/plugins`, so the game's `Charts` is one
-                // level above the folder the MelonLoader layout calls "the mod folder".
                 parent?.Parent == null
                     ? null
                     : Path.GetFullPath(Path.Combine(parent.Parent.FullName, FolderName)),
@@ -84,8 +54,6 @@ namespace InFalsusChartLoader
                 }
             }
 
-            // Neither is there. Make the one the layout calls for, rather than only naming it: an
-            // empty folder is a place to put something, and a path in a log is a scavenger hunt.
             string preferred = candidates[0] ?? candidates[1];
             if (preferred == null)
             {
@@ -108,14 +76,7 @@ namespace InFalsusChartLoader
             }
         }
 
-        /// <summary>
-        /// Every chart folder under <paramref name="root"/> that is complete, in a stable order.
-        ///
-        /// <paramref name="validateCharts"/> is asked about a folder whose files are all present and
-        /// whose <c>if</c> is well formed; it returns null when the four charts decode, or a reason
-        /// when they do not. Nothing is half-imported: a folder that fails any check is left out of
-        /// the result and its reason is logged, and the song list simply does not contain it.
-        /// </summary>
+        /// <summary>Imports every complete chart folder under <paramref name="root"/>.</summary>
         internal static List<ChartInfo> Import(string root, Func<ChartInfo, string> validateCharts)
         {
             var imported = new List<ChartInfo>();
@@ -162,11 +123,7 @@ namespace InFalsusChartLoader
             return imported;
         }
 
-        /// <summary>
-        /// The four difficulty ratings, in difficulty order, with <c>-</c> for a difficulty the `if`
-        /// file left out — the shape of the line an author reads to see what their folder was taken
-        /// for, so a difficulty that named no chart should read as absent rather than as a zero.
-        /// </summary>
+        /// <summary>The four ratings for a log line, with <c>-</c> for a difficulty left out.</summary>
         private static string Levels(ChartInfo info)
         {
             var text = new string[ChartInfo.Difficulties];

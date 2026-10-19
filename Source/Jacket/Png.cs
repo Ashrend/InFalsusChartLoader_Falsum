@@ -4,21 +4,7 @@ using System.IO.Compression;
 
 namespace InFalsusChartLoader
 {
-    /// <summary>
-    /// Just enough PNG to turn a jacket into pixels.
-    ///
-    /// <para>
-    /// This exists because the game cannot do it. Every image it draws arrives through Addressables
-    /// as a Material, and its metadata has no decode-from-bytes entry point at all — so a picture
-    /// that is a file on disk has to be turned into pixels on this side.
-    /// </para>
-    /// <para>
-    /// What is supported is what a jacket is: 8 bits per channel, non-interlaced, in any of the five
-    /// colour types. 16-bit and interlaced files are refused with a reason rather than approximated,
-    /// and so is anything malformed — a half-decoded image would be worse than none, because the
-    /// failure would show up as a wrong picture rather than as a missing one.
-    /// </para>
-    /// </summary>
+    /// <summary>Decodes a PNG into RGBA pixels.</summary>
     internal static class Png
     {
         /// <summary>The eight bytes every PNG starts with.</summary>
@@ -31,17 +17,11 @@ namespace InFalsusChartLoader
             internal int Height;
             internal byte[] Rgba;
 
-            /// <summary>
-            /// The pixels as a `Color32[]` would lay them out. `Color32` is four bytes in this order,
-            /// so the decoded buffer is already the array's contents and needs no conversion.
-            /// </summary>
+            /// <summary>The pixels in a `Color32[]` layout.</summary>
             internal byte[] AsColor32 => Rgba;
         }
 
-        /// <summary>
-        /// Decodes <paramref name="bytes"/>. Null with a reason when the file is not a PNG this
-        /// decoder will handle.
-        /// </summary>
+        /// <summary>Decodes a PNG, or returns null with a reason.</summary>
         internal static Image Decode(byte[] bytes, out string reason)
         {
             reason = null;
@@ -136,7 +116,7 @@ namespace InFalsusChartLoader
                     break;
                 }
 
-                at = body + length + 4;   // + the CRC, which is not checked: the inflate will notice
+                at = body + length + 4;
             }
 
             if (!haveHeader)
@@ -212,10 +192,7 @@ namespace InFalsusChartLoader
             }
         }
 
-        /// <summary>
-        /// The zlib stream's deflate body. The two-byte header is skipped and the trailing checksum
-        /// ignored — the lengths are already known and the inflate fails loudly on real corruption.
-        /// </summary>
+        /// <summary>The deflate body of the zlib stream.</summary>
         private static byte[] Inflate(byte[] zlib)
         {
             if (zlib.Length < 2) throw new InvalidDataException("no zlib data");
@@ -228,13 +205,7 @@ namespace InFalsusChartLoader
             return output.ToArray();
         }
 
-        /// <summary>
-        /// Undoes the per-row filter, which is PNG's way of making the bytes compressible.
-        ///
-        /// Every row is prefixed with its filter number and is reconstructed from the row above and
-        /// the byte <c>channels</c> to the left, so the rows have to be walked in order and the
-        /// result written back over the input.
-        /// </summary>
+        /// <summary>Undoes the per-row filter.</summary>
         private static byte[] Unfilter(byte[] raw, int width, int height, int channels, int stride)
         {
             var pixels = new byte[stride * height];
@@ -272,7 +243,7 @@ namespace InFalsusChartLoader
             return pixels;
         }
 
-        /// <summary>The PNG predictor: whichever of the three neighbours the gradient points at.</summary>
+        /// <summary>The PNG predictor.</summary>
         private static int Paeth(int left, int above, int aboveLeft)
         {
             int estimate = left + above - aboveLeft;
@@ -284,10 +255,7 @@ namespace InFalsusChartLoader
             return da <= dal ? above : aboveLeft;
         }
 
-        /// <summary>
-        /// The five colour types as RGBA. Declared colour types only: a file whose samples are
-        /// indexed or greyscale is expanded here and nowhere else.
-        /// </summary>
+        /// <summary>The five colour types as RGBA.</summary>
         private static byte[] ToRgba(byte[] pixels, int width, int height, int colourType,
                                      int channels, byte[] palette, out string reason)
         {
