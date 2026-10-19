@@ -7,6 +7,7 @@
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
     <AssemblyName>InFalsusChartLoader</AssemblyName>
+    <Configurations>Debug;Release;BepInExDebug;BepInExRelease</Configurations>
 
     <!-- The assembly's version number. -->
     <AssemblyVersion>0.2.1</AssemblyVersion>
@@ -14,6 +15,8 @@
 
   <!-- Which loader this build targets, and the define it compiles with. -->
   <PropertyGroup>
+    <Loader Condition="'$(Loader)' == '' And '$(Configuration)' == 'BepInExRelease'">BepInEx</Loader>
+    <Loader Condition="'$(Loader)' == '' And '$(Configuration)' == 'BepInExDebug'">BepInEx</Loader>
     <Loader Condition="'$(Loader)' == ''">MelonLoader</Loader>
     <LoaderDir Condition="'$(Loader)' == 'MelonLoader'">Managed\MelonLoader</LoaderDir>
     <LoaderDir Condition="'$(Loader)' == 'BepInEx'">Managed\BepInEx</LoaderDir>
