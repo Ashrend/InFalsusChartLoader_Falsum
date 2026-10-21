@@ -47,6 +47,15 @@ namespace InFalsusChartLoader
                 return null;
             }
 
+            bytes = SkipTags(bytes);
+            if (bytes.Length == 0)
+            {
+#if DEBUG
+                reason = $"{Path.GetFileName(path)} holds only tag data";
+#endif
+                return null;
+            }
+
             ulong seed = unchecked(Gold * (uint)bytes.Length);
 
             int i = 0;
@@ -61,6 +70,36 @@ namespace InFalsusChartLoader
             }
 
             return new Prepared { Bytes = bytes };
+        }
+
+        /// <summary>Drops the tags the game's reader would otherwise treat as audio.</summary>
+        private static byte[] SkipTags(byte[] bytes)
+        {
+            int start = 0;
+            int end = bytes.Length;
+
+            if (end >= 10 && bytes[0] == 'I' && bytes[1] == 'D' && bytes[2] == '3')
+            {
+                int version = bytes[3];
+                int size = version == 2
+                    ? ((bytes[6] & 0x7F) << 14) | ((bytes[7] & 0x7F) << 7) | (bytes[8] & 0x7F)
+                    : ((bytes[6] & 0x7F) << 21) | ((bytes[7] & 0x7F) << 14) |
+                      ((bytes[8] & 0x7F) << 7) | (bytes[9] & 0x7F);
+
+                int total = 10 + size;
+                if (version >= 4 && (bytes[5] & 0x10) != 0) total += 10;
+                if (total > 0 && total <= end) start = total;
+            }
+
+            if (end - start >= 128 &&
+                bytes[end - 128] == 'T' && bytes[end - 127] == 'A' && bytes[end - 126] == 'G')
+                end -= 128;
+
+            if (start == 0 && end == bytes.Length) return bytes;
+
+            var audio = new byte[end - start];
+            Buffer.BlockCopy(bytes, start, audio, 0, audio.Length);
+            return audio;
         }
 
         /// <summary>One keystream word.</summary>
