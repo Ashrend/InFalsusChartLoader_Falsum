@@ -67,6 +67,17 @@ namespace InFalsusChartLoader
         internal static long SceneSwitchCalls;
         internal static int SceneSwitchLastState = int.MinValue;
 
+        private static bool _releaseReported;
+
+        /// <summary>Says once that the audio a finished scene switch should have released is still held.</summary>
+        private static void ReleaseFailed(Exception e)
+        {
+            if (_releaseReported) return;
+            _releaseReported = true;
+            Diagnostics.Error("the audio a finished scene switch should have released could not be cleared: " +
+                              Diagnostics.Describe(e));
+        }
+
         /// <summary>The object the console switch is waiting on, and its class name.</summary>
         internal static IntPtr SceneSwitchWait;
         internal static string SceneSwitchWaitName;
@@ -142,6 +153,12 @@ namespace InFalsusChartLoader
         {
             byte more = _moveNextTramp(self, methodInfo);
             SceneSwitchCalls++;
+
+            if (more == 0)
+            {
+                try { AudioCatalog.ReleaseRetired(); }
+                catch (Exception e) { ReleaseFailed(e); }
+            }
 
             if (!Memory.LooksLikeObject(self)) return more;
 
