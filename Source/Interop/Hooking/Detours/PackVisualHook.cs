@@ -79,8 +79,8 @@ namespace InFalsusChartLoader
         /// <summary>`_pc`'s `MethodInfo`.</summary>
         private static IntPtr _buildCardInfo;
 
-        /// <summary>Difficulty applies seen, and cards rebuilt because of one.</summary>
-        internal static long PackDifficultyCalls, PackCardsRebuilt;
+        /// <summary>Difficulty applies seen, cards rebuilt for one, and pack screens rebuilt after a reload.</summary>
+        internal static long PackDifficultyCalls, PackCardsRebuilt, PackVisualRebuilds;
 
         /// <summary>The shared accessor for `SongSelectPackAssets` rows.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

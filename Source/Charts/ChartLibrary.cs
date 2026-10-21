@@ -77,7 +77,8 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>Imports every complete chart folder under <paramref name="root"/>.</summary>
-        internal static List<ChartInfo> Import(string root, Func<ChartInfo, string> validateCharts)
+        internal static List<ChartInfo> Import(string root, Func<ChartInfo, string> validateCharts,
+                                               List<string> skipped = null)
         {
             var imported = new List<ChartInfo>();
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
@@ -105,6 +106,7 @@ namespace InFalsusChartLoader
                 if (!ChartInfoReader.TryRead(folder, out ChartInfo info, out string reason))
                 {
                     Diagnostics.Warn($"chart folder '{name}' skipped: {reason}");
+                    skipped?.Add(name);
                     continue;
                 }
 
@@ -112,6 +114,7 @@ namespace InFalsusChartLoader
                 if (reason != null)
                 {
                     Diagnostics.Warn($"chart folder '{name}' skipped: {reason}");
+                    skipped?.Add(name);
                     continue;
                 }
 
@@ -120,6 +123,7 @@ namespace InFalsusChartLoader
                 imported.Add(info);
             }
 
+            imported.Sort((left, right) => StringComparer.Ordinal.Compare(left.BaseName, right.BaseName));
             return imported;
         }
 

@@ -14,6 +14,18 @@ namespace InFalsusChartLoader
 
         private static bool _registered;
 
+        /// <summary>Whether the first registration has been attempted.</summary>
+        internal static bool Registered => _registered;
+
+        /// <summary>Whether the first import found anything to register.</summary>
+        internal static bool HasImported => _imported.Count > 0;
+
+        /// <summary>Marks the tables as ready after a reload registered them.</summary>
+        internal static void MarkRegistered() => _registered = true;
+
+        /// <summary>Keeps the current model in step with what the reloader applied.</summary>
+        internal static void Adopt(List<ChartInfo> charts) => _imported = charts;
+
 #if DEBUG
         /// <summary>Frames seen, for the probe's timer.</summary>
         private static int _frames;
@@ -45,9 +57,9 @@ namespace InFalsusChartLoader
                 _imported = ChartLibrary.Import(root, Validate);
                 Diagnostics.Load($"charts: {_imported.Count} imported");
 
-                bool worthHooking = _imported.Count > 0;
-                if (worthHooking) Hooks.Install();
-                else Diagnostics.Info("no charts were imported, so no hooks are being installed");
+                Reload.Start(root);
+
+                Hooks.Install();
 
 #if DEBUG
                 Probe.Startup(root, codecReady, assetsReady, Hooks.Installed, Hooks.Attempted);
@@ -63,6 +75,7 @@ namespace InFalsusChartLoader
         internal static void Update()
         {
             VideoBackground.Follow();
+            Reload.Poll();
 
 #if DEBUG
             if (++_frames % 600 == 0) Diagnostics.Info("probe: counters       " + Probe.Status());
@@ -170,7 +183,7 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>Checks the charts a folder imports.</summary>
-        private static string Validate(ChartInfo info)
+        internal static string Validate(ChartInfo info)
         {
             byte[] scratch = new byte[32];
             for (int d = 0; d < ChartInfo.Difficulties; d++)

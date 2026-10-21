@@ -107,6 +107,16 @@ namespace InFalsusChartLoader
         /// <summary>Whether this is the material the clip built.</summary>
         internal static bool Owns(IntPtr material) => material != IntPtr.Zero && material == _material;
 
+        /// <summary>Drops the prepared clip for a file whose bytes changed.</summary>
+        internal static void Forget(string path)
+        {
+            if (_playing != path) return;
+
+            Stop();
+            _playing = null;
+            _length = -1.0;
+        }
+
         /// <summary>Moves the clip's picture onto a clone of the game's background material.</summary>
         internal static IntPtr Rebase(IntPtr gameMaterial, out string reason)
         {
@@ -472,7 +482,12 @@ namespace InFalsusChartLoader
             if (_player == IntPtr.Zero) return;
 
             string reason = null;
-            Call("Stop", 0, _player, out reason);
+            if (!Call("Stop", 0, _player, out reason))
+                Diagnostics.Warn($"the background video could not be stopped: {reason}");
+
+            // Clears the source so the file is not held open between songs.
+            if (!Set("set_url", 1, string.Empty, out reason))
+                Diagnostics.Warn($"the background video's source could not be cleared: {reason}");
 
             _playing = null;
             _armed = false;

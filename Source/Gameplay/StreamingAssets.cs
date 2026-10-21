@@ -119,6 +119,21 @@ namespace InFalsusChartLoader
             return index;
         }
 
+        /// <summary>Rewrites the length the manager holds for a file it already lists.</summary>
+        internal static bool SetLength(int index, long length)
+        {
+            if (!Resolved || index < 0) return false;
+
+            IntPtr lengths = Memory.Ptr(_bg + FieldLengths);
+            if (!Memory.LooksLikeObject(lengths)) return false;
+
+            int count = Memory.I32(lengths + Offsets.Runtime.ArrayLength);
+            if (index >= count) return false;
+
+            Memory.WriteI64(lengths + Offsets.Runtime.ArrayDataOffset + index * sizeof(long), length);
+            return true;
+        }
+
         /// <summary>Replaces one of the manager's arrays with a larger one.</summary>
         private static bool Grow(int field, int size, int standIn, bool own)
         {

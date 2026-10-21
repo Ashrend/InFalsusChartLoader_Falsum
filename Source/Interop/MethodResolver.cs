@@ -26,7 +26,11 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>The runtime's <c>MethodInfo</c> for a method, or zero.</summary>
-        internal static IntPtr MethodInfoOf(string typeName, string methodName)
+        internal static IntPtr MethodInfoOf(string typeName, string methodName) =>
+            MethodInfoOf(typeName, methodName, -1);
+
+        /// <summary>The runtime's <c>MethodInfo</c> for a method with a given parameter count.</summary>
+        internal static IntPtr MethodInfoOf(string typeName, string methodName, int parameters)
         {
             try
             {
@@ -38,6 +42,7 @@ namespace InFalsusChartLoader
                     foreach (MethodInfo mi in t.GetMethods(AnyMethod | BindingFlags.DeclaredOnly))
                     {
                         if (mi.Name != methodName) continue;
+                        if (parameters >= 0 && mi.GetParameters().Length != parameters) continue;
 
                         FieldInfo f = Il2CppInterop.Common.Il2CppInteropUtils
                             .GetIl2CppMethodInfoPointerFieldForGeneratedMethod(mi);

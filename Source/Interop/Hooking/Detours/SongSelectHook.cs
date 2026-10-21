@@ -14,7 +14,7 @@ namespace InFalsusChartLoader
         /// <summary>Selections applied.</summary>
         internal static long ApplyCalls;
 
-        /// <summary>Times a difficulty change reloaded the pictures.</summary>
+        /// <summary>Times a difficulty change or a chart reload forced the pictures to reload.</summary>
         internal static long ApplyReloaded;
 
         /// <summary>The `_MN` delegate.</summary>
