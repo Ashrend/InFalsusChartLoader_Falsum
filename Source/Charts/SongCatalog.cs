@@ -98,9 +98,6 @@ namespace InFalsusChartLoader
         private static int ChartInfoRating => Offsets.Chart.Rating;               // int
         private static int ChartInfoSection => Offsets.Chart.Section;             // string
 
-        /// <summary>Where the song list's level grouping changes over.</summary>
-        private const int SectionBoundary = 9;
-
         // ---- PackInfo ----
         private static int PackInfoSize => Offsets.Pack.Size;
         private static int PackInfoId => Offsets.Pack.Id;        // PackId (ushort)
@@ -418,8 +415,9 @@ namespace InFalsusChartLoader
                 int? level = info.Level[d];
                 Memory.WriteI32(slot + ChartInfoRating, level ?? 0);
                 Memory.WritePtr(slot + ChartInfoSection,
-                                Str(level is int rated ? (rated <= SectionBoundary ? "1" : "2")
-                                                       : string.Empty));
+                                Str(level is int rated
+                                    ? rated.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                                    : string.Empty));
             }
 
             return array;
