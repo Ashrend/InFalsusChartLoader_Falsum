@@ -21,6 +21,7 @@ namespace InFalsusChartLoader
         private static int _selectedIndexField = Offsets.Unresolved;
         private static IntPtr _gcInfo;
         private static IntPtr _aoAInfo;
+        private static IntPtr _selectPackInfo;
         private static IntPtr _yoInfo;
         private static IntPtr _ihClass;
         private static IntPtr _ihCtor;
@@ -54,6 +55,14 @@ namespace InFalsusChartLoader
         private static bool _cardsReady;
         private static bool _cardsMissing;
 
+        private static int _packButtonField = Offsets.Unresolved;
+        private static int _packInfoField = Offsets.Unresolved;
+        private static IntPtr _packTitleInfo;
+        private static bool _titleReady;
+        private static bool _titleMissing;
+        private static bool _titleFellBack;
+        private static bool _screenEmptyState;
+
         /// <summary>The largest PackInfo a pack switch will copy.</summary>
         private const int PackInfoLimit = 256;
 
@@ -77,6 +86,7 @@ namespace InFalsusChartLoader
             IntPtr fresh = IntPtr.Zero;
             IntPtr layer = IntPtr.Zero;
             int slot = -1;
+            bool packEmpty = false;
             Diagnostics.Info($"probe: refresh pack id={packId}");
 
             if (packId == ushort.MaxValue)
@@ -112,18 +122,37 @@ namespace InFalsusChartLoader
                 }
 
                 slot = ReplacePackView(layer, packId, fresh);
+
+                IntPtr songs = Memory.Ptr(fresh + _ihPackField + Offsets.Pack.Songs);
+                packEmpty = ArrayCount(songs) == 0;
+                if (packEmpty)
+                {
+                    Diagnostics.Info($"probe: refresh pack={packId} empty; showing all songs");
+                    _titleFellBack = DeselectPack();
+                }
             }
 
             RefreshSongs(scene);
-            ApplyInline(scene, fresh);
+            ApplyInline(scene, packEmpty ? IntPtr.Zero : fresh);
+
+            if (_titleFellBack)
+            {
+                _titleFellBack = false;
+                ShowAllSongsTitle(scene);
+            }
+
+            bool rebuildPending = SongCatalog.EmptyPackListed() != _screenEmptyState;
 
             RefreshCards(scene);
-            RefreshPackScreen(layer, fresh, slot);
+            if (!rebuildPending) RefreshPackScreen(layer, fresh, slot);
 
             Diagnostics.Info($"probe: refresh after songs={ListCount(scene, _songsListField)} " +
                              $"views={ListCount(scene, _viewListField)} qr={SongIdsText(scene, _songsListField)}");
             LogCards(scene, _leftCardField, "left");
             LogCards(scene, _rightCardField, "right");
+
+            if (rebuildPending)
+                PackScreenRebuild.Rebuild(scene);
         }
 
         /// <summary>The ids a scene's SongInfo list holds, as text, or "?".</summary>
@@ -159,8 +188,10 @@ namespace InFalsusChartLoader
             if (!Memory.LooksLikeObject(views)) return;
 
             int count = Memory.I32(views + Offsets.Runtime.ListSize);
+            if (count <= 0) return;
+
             int index = Memory.I32(scene + _selectedIndexField);
-            if (count > 0 && index >= count) index = count - 1;
+            if (index >= count) index = count - 1;
             if (index < 0) index = 0;
 
             int at = index;
@@ -223,7 +254,7 @@ namespace InFalsusChartLoader
         {
             if (fresh == IntPtr.Zero || slot < 0 || layer == IntPtr.Zero) return;
 
-            if (_packRebuildInfo == IntPtr.Zero)
+            if (_packRebuildInfo == IntPtr.Zero || _packVisualField < 0)
             {
                 Diagnostics.Error("the category screen's cards could not be rebuilt; it will keep the " +
                                   "pictures it was built with");
@@ -599,7 +630,8 @@ namespace InFalsusChartLoader
             Invoke(_onInfo, scene, args, "the song could not be selected");
             if (shadowed) Selection.Unshadow(scene, selected);
 
-            if (_snInfo != IntPtr.Zero) Invoke(_snInfo, scene, null, "the song select could not be refreshed");
+            if (_snInfo != IntPtr.Zero && ListCount(scene, _viewListField) > 0)
+                Invoke(_snInfo, scene, null, "the song select could not be refreshed");
         }
 
         /// <summary>Rebuilds the scene's all-song list from the live table.</summary>
@@ -632,7 +664,7 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>Empties a game List.</summary>
-        private static void ClearList(IntPtr list)
+        internal static void ClearList(IntPtr list)
         {
             IntPtr klass = Il2CppInterop.Runtime.IL2CPP.il2cpp_object_get_class(list);
             if (klass == IntPtr.Zero) return;
@@ -646,6 +678,11 @@ namespace InFalsusChartLoader
                 Diagnostics.Error($"the song list could not be cleared: {Raised.Text(raised)}");
         }
 
+        /// <summary>The one sentence reported when the pack list cannot be read or built.</summary>
+        internal const string PackListUnavailable =
+            "the pack list is not in this build; an empty custom pack will keep its category entry";
+
+        /// <summary>Resolves what taking a pack out of the live category screen needs.</summary>
         /// <summary>A fresh pack view model built from the live row.</summary>
         private static IntPtr BuildPack(IntPtr scene, IntPtr packInfo)
         {
@@ -679,6 +716,178 @@ namespace InFalsusChartLoader
             }
 
             return fresh;
+        }
+
+        /// <summary>Puts the save's selected pack back to all songs when the custom pack is empty.</summary>
+        private static bool DeselectPack()
+        {
+            if (_selectPackInfo == IntPtr.Zero)
+            {
+                DeselectFailed("no pack setter in this build");
+                return false;
+            }
+
+            IntPtr save = Save();
+            if (!Memory.LooksLikeObject(save))
+            {
+                DeselectFailed("the save object is not there");
+                return false;
+            }
+
+            ushort none = ushort.MaxValue;
+            IntPtr* args = stackalloc IntPtr[1];
+            args[0] = (IntPtr)(&none);
+
+            IntPtr raised = IntPtr.Zero;
+            Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(_selectPackInfo, save, (void**)args, ref raised);
+            if (raised != IntPtr.Zero)
+            {
+                DeselectFailed(Raised.Text(raised));
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>Puts the save back on all songs when it points at this mod's pack.</summary>
+        internal static void DeselectIfCustomPackSelected()
+        {
+            if (!Resolve()) return;
+            if (CurrentPackId(out ushort selected) && selected == (ushort)SongCatalog.CustomPackId)
+                DeselectPack();
+        }
+
+        /// <summary>The pack the save has selected.</summary>
+        internal static bool SelectedPack(out ushort packId)
+        {
+            if (!Resolve())
+            {
+                packId = ushort.MaxValue;
+                return false;
+            }
+
+            return CurrentPackId(out packId);
+        }
+
+        /// <summary>Writes the save's selected pack through the game's own setter.</summary>
+        internal static bool SetSelectedPack(ushort packId)
+        {
+            if (!Resolve()) return false;
+            if (_selectPackInfo == IntPtr.Zero)
+            {
+                HoldFailed("no pack setter in this build");
+                return false;
+            }
+
+            IntPtr save = Save();
+            if (!Memory.LooksLikeObject(save))
+            {
+                HoldFailed("the save object is not there");
+                return false;
+            }
+
+            IntPtr* args = stackalloc IntPtr[1];
+            args[0] = (IntPtr)(&packId);
+
+            IntPtr raised = IntPtr.Zero;
+            Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(_selectPackInfo, save, (void**)args, ref raised);
+            if (raised != IntPtr.Zero)
+            {
+                HoldFailed(Raised.Text(raised));
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>Records what the category screen was built with: the empty pack left out or not.</summary>
+        internal static void NotePackScreenBuilt(bool emptyHidden) => _screenEmptyState = emptyHidden;
+
+        /// <summary>The one sentence reported when an empty pack could not be deselected.</summary>
+        private const string DeselectFailedText =
+            "the empty pack could not be deselected; re-entering the song select with it selected will fail: ";
+
+        private static void DeselectFailed(string why) => Diagnostics.Error(DeselectFailedText + why);
+
+        /// <summary>The one sentence reported when the category screen's position cannot be held across its rebuild.</summary>
+        private const string HoldFailedText =
+            "the category screen's position could not be held across its rebuild: ";
+
+        internal static void HoldFailed(string why) => Diagnostics.Error(HoldFailedText + why);
+
+        /// <summary>The one sentence reported when the pack title cannot be moved back to all songs.</summary>
+        private const string PackTitleFailed =
+            "the song select's pack title could not be updated in this build; it will keep the name of the pack that left";
+
+        /// <summary>
+        /// Puts the song select's pack button back on all songs, through the game's own `_Tn` and the
+        /// all-songs pack info the scene keeps (`_pr`) — the same pair `_Mo(null)` uses.
+        /// </summary>
+        private static void ShowAllSongsTitle(IntPtr scene)
+        {
+            if (!PreparePackTitle()) return;
+
+            IntPtr container = Memory.Ptr(scene + _packButtonField);
+            if (!Memory.LooksLikeObject(container))
+            {
+                Diagnostics.Error(PackTitleFailed);
+                return;
+            }
+
+            IntPtr dataAccess = Memory.Ptr(scene + _dataAccessField);
+            IntPtr save = Save();
+            int localization = CurrentLocalization();
+            if (!Memory.LooksLikeObject(dataAccess) || !Memory.LooksLikeObject(save) || localization < 0)
+            {
+                Diagnostics.Error(PackTitleFailed);
+                return;
+            }
+
+            IntPtr view = BuildPackCore(scene + _packInfoField, dataAccess, save, 1, localization);
+            if (view == IntPtr.Zero)
+            {
+                Diagnostics.Error(PackTitleFailed);
+                return;
+            }
+
+            IntPtr* args = stackalloc IntPtr[1];
+            args[0] = (IntPtr)(&view);
+
+            IntPtr raised = IntPtr.Zero;
+            Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(_packTitleInfo, container, (void**)args, ref raised);
+            if (raised != IntPtr.Zero)
+            {
+                Diagnostics.Error(PackTitleFailed + " " + Raised.Text(raised));
+                return;
+            }
+
+            Diagnostics.Info("probe: pack title set to all songs");
+        }
+
+        /// <summary>Resolves what putting the pack button back on all songs needs.</summary>
+        private static bool PreparePackTitle()
+        {
+            if (_titleReady) return true;
+            if (_titleMissing) return false;
+            if (!PreparePackSwitch())
+            {
+                _titleMissing = true;
+                return false;
+            }
+
+            _packButtonField = FieldResolver.Field(SceneType, "packSelectButtonContainer");
+            _packInfoField = FieldResolver.Field(SceneType, "_pr");
+            _packTitleInfo = MethodInfo("PackSelectButtonContainer", "_Tn", 1);
+
+            if (_packButtonField < 0 || _packInfoField < 0 || _packTitleInfo == IntPtr.Zero)
+            {
+                _titleMissing = true;
+                Diagnostics.Error(PackTitleFailed);
+                return false;
+            }
+
+            _titleReady = true;
+            return true;
         }
 
         /// <summary>The player's save object.</summary>
@@ -836,6 +1045,7 @@ namespace InFalsusChartLoader
             _snInfo = MethodInfo(SceneType, "_SN", 0);
             _gcInfo = MethodInfo("PackSelectScene", "_Gc", 1);
             _aoAInfo = MethodInfo("_NH", "_aoA", 0);
+            _selectPackInfo = MethodInfo("_NH", "_hoA", 1);
             _yoInfo = MethodInfo("SongSelectSmallCardScrollContainer", "_Yo", 2);
             _yoAllInfo = MethodInfo("_NH", "_YoA", 2);
             _dataAccessField = FieldResolver.Field(SceneType, "dataAccess");

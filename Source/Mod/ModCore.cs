@@ -81,13 +81,36 @@ namespace InFalsusChartLoader
             if (++_frames % 600 == 0) Diagnostics.Info("probe: counters       " + Probe.Status());
 #endif
 
-            if (_registered || _imported.Count == 0) return;
+            if (_registered) return;
 
             try
             {
                 if (!SongCatalog.TryGetAssets(out IntPtr songData, out IntPtr packData))
                 {
                     if (SongCatalog.Unusable) _registered = true;
+                    return;
+                }
+
+                if (_imported.Count == 0)
+                {
+                    if (SongCatalog.SetupEmptyPack(packData))
+                    {
+                        if (PackSetup.TryGetVisuals(out IntPtr emptyVisuals))
+                            PackSetup.ExtendVisuals(emptyVisuals, SongCatalog.CustomPackId);
+                        else
+                            Diagnostics.Warn("the pack visual table could not be reached");
+
+                        PackSetup.RefreshLookup(packData);
+                        PackSetup.SetPackName(SongCatalog.CustomPackId, SongCatalog.PackName);
+                    }
+                    else
+                    {
+                        Diagnostics.Error("the custom pack could not be prepared while no charts are loaded; " +
+                                          "a chart added in the song select will not show its category until " +
+                                          "the scene is entered again");
+                    }
+
+                    _registered = true;
                     return;
                 }
 

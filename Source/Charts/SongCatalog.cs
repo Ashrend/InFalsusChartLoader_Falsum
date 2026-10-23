@@ -428,6 +428,66 @@ namespace InFalsusChartLoader
             return IntPtr.Zero;
         }
 
+        /// <summary>
+        /// How many songs one pack holds in the live table. False when the table or the pack cannot
+        /// be read, which is not the same statement as a pack that holds none.
+        /// </summary>
+        internal static bool LivePackSongCount(ushort packId, out int count)
+        {
+            count = 0;
+            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return false;
+
+            IntPtr packs = Memory.Ptr(packData + Offsets.PackData.Packs);
+            if (!Memory.LooksLikeObject(packs)) return false;
+
+            int rows = Memory.I32(packs + Offsets.Runtime.ArrayLength);
+            for (int i = 0; i < rows; i++)
+            {
+                IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * PackInfoSize;
+                if (Memory.U16(pack + PackInfoId) != packId) continue;
+
+                IntPtr songs = Memory.Ptr(pack + PackInfoSongs);
+                count = Memory.LooksLikeObject(songs) ? Memory.I32(songs + Offsets.Runtime.ArrayLength) : 0;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>The live row index of one pack, or -1 when it is not in the table.</summary>
+        internal static int LivePackRow(ushort packId)
+        {
+            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return -1;
+
+            IntPtr packs = Memory.Ptr(packData + Offsets.PackData.Packs);
+            if (!Memory.LooksLikeObject(packs)) return -1;
+
+            int count = Memory.I32(packs + Offsets.Runtime.ArrayLength);
+            for (int i = 0; i < count; i++)
+            {
+                IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * PackInfoSize;
+                if (Memory.U16(pack + PackInfoId) == packId) return i;
+            }
+
+            return -1;
+        }
+
+        /// <summary>The pack id in one live row, or 0xFFFF when there is none.</summary>
+        internal static ushort LivePackIdAtRow(int row)
+        {
+            if (row < 0) return ushort.MaxValue;
+            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return ushort.MaxValue;
+
+            IntPtr packs = Memory.Ptr(packData + Offsets.PackData.Packs);
+            if (!Memory.LooksLikeObject(packs)) return ushort.MaxValue;
+
+            int count = Memory.I32(packs + Offsets.Runtime.ArrayLength);
+            if (row >= count) return ushort.MaxValue;
+
+            IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + row * PackInfoSize;
+            return Memory.U16(pack + PackInfoId);
+        }
+
         /// <summary>Copies the live row of a pack over a saved copy of it.</summary>
         internal static bool CopyPackTo(IntPtr destination, ushort packId)
         {
@@ -635,6 +695,81 @@ namespace InFalsusChartLoader
             Diagnostics.Info($"pack '{PackName}' added with {songCount} songs at index {CustomPackIndex} " +
                              $"(id {packId}), before the game's {oldCount - CustomPackIndex} shown packs");
             return true;
+        }
+
+        /// <summary>
+        /// Puts the custom pack into the live table with no songs, so a pack select scene built
+        /// now has an entry for it; the entry is hidden while the table holds none.
+        /// </summary>
+        internal static bool SetupEmptyPack(IntPtr packData)
+        {
+            if (CustomPackId >= 0) return true;
+
+            IntPtr songIds = AllocateSongIds(packData, 0);
+            if (songIds == IntPtr.Zero) return false;
+
+            return AddPack(packData, songIds, 0);
+        }
+
+        /// <summary>Whether the custom pack is in the live table and holds no songs.</summary>
+        internal static bool EmptyPackListed()
+        {
+            if (CustomPackId < 0) return false;
+            return LivePackSongCount((ushort)CustomPackId, out int songs) && songs == 0;
+        }
+
+        /// <summary>
+        /// Takes the empty custom pack out of the live pack table for one build, so the game's own
+        /// pack screen is built without it; the returned table puts it back.
+        /// </summary>
+        internal static IntPtr HideEmptyPackForBuild()
+        {
+            if (CustomPackId < 0) return IntPtr.Zero;
+            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return IntPtr.Zero;
+            if (!LivePackSongCount((ushort)CustomPackId, out int songs) || songs > 0) return IntPtr.Zero;
+
+            IntPtr packs = Memory.Ptr(packData + PackDataPacks);
+            if (!Memory.LooksLikeObject(packs)) return IntPtr.Zero;
+
+            int count = Memory.I32(packs + Offsets.Runtime.ArrayLength);
+            int at = -1;
+            for (int i = 0; i < count; i++)
+            {
+                IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * PackInfoSize;
+                if (Memory.U16(pack + PackInfoId) == (ushort)CustomPackId)
+                {
+                    at = i;
+                    break;
+                }
+            }
+            if (at < 0) return IntPtr.Zero;
+
+            IntPtr kept = NewArray(packs, count - 1);
+            if (kept == IntPtr.Zero) return IntPtr.Zero;
+
+            IntPtr source = packs + Offsets.Runtime.ArrayDataOffset;
+            IntPtr data = kept + Offsets.Runtime.ArrayDataOffset;
+            long head = (long)at * PackInfoSize;
+            long tail = (long)(count - at - 1) * PackInfoSize;
+
+            if (head > 0) Buffer.MemoryCopy((void*)source, (void*)data, head, head);
+            if (tail > 0)
+                Buffer.MemoryCopy((void*)(source.ToInt64() + head + PackInfoSize),
+                                  (void*)(data.ToInt64() + head), tail, tail);
+
+            Memory.WritePtr(packData + PackDataPacks, kept);
+            PackSetup.RefreshLookup(packData);
+            return packs;
+        }
+
+        /// <summary>Puts back the pack table a build was hidden from.</summary>
+        internal static void RestorePackTable(IntPtr table)
+        {
+            if (table == IntPtr.Zero) return;
+            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return;
+
+            Memory.WritePtr(packData + PackDataPacks, table);
+            PackSetup.RefreshLookup(packData);
         }
 
         /// <summary>The first pack id the game is not using.</summary>
