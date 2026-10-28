@@ -93,7 +93,7 @@ namespace InFalsusChartLoader
             return true;
         }
 
-        /// <summary>Drops the songs that are no longer in the model, keeping their indices for a return.</summary>
+        /// <summary>Drops the songs that are no longer in the model.</summary>
         internal static void Prune(ICollection<string> keep)
         {
             foreach (string name in new List<string>(ByBase.Keys))
@@ -115,6 +115,7 @@ namespace InFalsusChartLoader
             {
                 ByIndex.Remove(entry.Index);
                 entry.Audio = null;
+                StreamingAssets.Release(entry.Index);
                 Diagnostics.Info($"probe: audio released index={entry.Index}");
             }
 
