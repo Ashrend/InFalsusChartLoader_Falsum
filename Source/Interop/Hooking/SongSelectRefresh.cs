@@ -299,8 +299,8 @@ namespace InFalsusChartLoader
 
             _packSceneAccessField = FieldResolver.Field("PackSelectScene", "dataAccess");
             _packDifficultyField = FieldResolver.Field("PackSelectScene", "_Gf");
-            _localizationInfo = MethodResolver.MethodInfoByRuntime("Strings", "GetCurrentLocalization",
-                                                                   "Str.dll", "Str");
+            _localizationInfo = MethodResolver.MethodInfoByRuntimeInImage("Str.dll", "Str", "Strings",
+                                                                           "GetCurrentLocalization");
             if (_packSceneAccessField < 0 || _packDifficultyField < 0 ||
                 _packListField < 0 || _packIndexField < 0 ||
                 _packRebuildInfo == IntPtr.Zero ||
@@ -404,8 +404,7 @@ namespace InFalsusChartLoader
 
             _packOutlineListField = FieldResolver.Field("PackSelectScene", "_ff");
             _outlinePackField = FieldResolver.Field("PackOutlineMember", "_df");
-            _outlineUpdateInfo = MethodResolver.MethodInfoByRuntime("PackOutlineMember", "_XB",
-                                                                   "Game.dll", "ifapp.Game");
+            _outlineUpdateInfo = MethodResolver.MethodInfoByRuntime("PackOutlineMember", "_XB");
             if (_packOutlineListField < 0 || _outlinePackField < 0 ||
                 _outlineUpdateInfo == IntPtr.Zero ||
                 Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_param_count(_outlineUpdateInfo) != 1)
@@ -434,8 +433,7 @@ namespace InFalsusChartLoader
             _bottomPackContainerField = FieldResolver.Field("PackSelectScene", "bottomScrollContainer");
             _packCardListField = FieldResolver.Field("PackSelectScrollContainer", "_jr");
             _cardPackField = FieldResolver.Field("PackVisualMemberSmall", "_Pf");
-            _packCardUpdateInfo = MethodResolver.MethodInfoByRuntime("PackSelectScrollContainer", "_zn",
-                                                                     "Game.dll", "ifapp.Game.Scenes");
+            _packCardUpdateInfo = MethodResolver.MethodInfoByRuntime("PackSelectScrollContainer", "_zn");
             if (_topPackContainerField < 0 || _bottomPackContainerField < 0 ||
                 _packCardListField < 0 || _cardPackField < 0 ||
                 _packCardUpdateInfo == IntPtr.Zero ||
@@ -1052,8 +1050,7 @@ namespace InFalsusChartLoader
             _packVisualField = FieldResolver.Field("PackSelectScene", "packVisualMemberLarge");
             _packListField = FieldResolver.Field("PackSelectScene", "_Ef");
             _packIndexField = FieldResolver.Field("PackSelectScene", "_gf");
-            _packRebuildInfo = MethodResolver.MethodInfoByRuntime("PackVisualMemberLarge", "_Ef",
-                                                                 "Game.dll", "ifapp.Game");
+            _packRebuildInfo = MethodResolver.MethodInfoByRuntime("PackVisualMemberLarge", "_Ef");
             if (_packRebuildInfo != IntPtr.Zero &&
                 Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_param_count(_packRebuildInfo) != 4)
             {

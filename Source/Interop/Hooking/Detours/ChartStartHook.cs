@@ -46,9 +46,7 @@ namespace InFalsusChartLoader
 
         private static bool InstallGameEnd()
         {
-            IntPtr target = MethodResolver.ByName("GameScene", "OnDestroy");
-            if (target == IntPtr.Zero)
-                target = MethodResolver.ByRuntime("GameScene", "OnDestroy", "Game.dll", "ifapp.Game.Scenes");
+            IntPtr target = MethodResolver.ByRuntime("GameScene", "OnDestroy");
             if (target == IntPtr.Zero) return false;
 
             byte[] prologue = Prologue(target);

@@ -6,13 +6,6 @@ namespace InFalsusChartLoader
 {
     internal static unsafe partial class Hooks
     {
-        /// <summary>The pack screen's difficulty and row-accessor hooks.</summary>
-
-        /// <summary>`PackSongCardMember._pc` — builds one card and its jacket.</summary>
-        private const string PackImage = "Game.dll";
-
-        private const string PackNamespace = "ifapp.Game";
-
         /// <summary>`PackVisualMemberLarge._Mf`, the cards of the pack on screen.</summary>
         private static int CardsField = Offsets.Unresolved;
 
@@ -305,7 +298,7 @@ namespace InFalsusChartLoader
         {
             bool row = InstallPackRow();
 
-            IntPtr info = MethodResolver.MethodInfoByRuntime("PackSongCardMember", "_pc", PackImage, PackNamespace);
+            IntPtr info = MethodResolver.MethodInfoByRuntime("PackSongCardMember", "_pc");
             if (info == IntPtr.Zero)
             {
                 Diagnostics.Warn("PackSongCardMember._pc could not be found; a difficulty change on the " +
@@ -317,7 +310,7 @@ namespace InFalsusChartLoader
                 _buildCard = (delegate* unmanaged[Cdecl]<IntPtr, IntPtr, IntPtr, IntPtr, void>)(*(IntPtr*)info);
             }
 
-            IntPtr target = MethodResolver.ByRuntime("PackVisualMemberLarge", "_vc", PackImage, PackNamespace);
+            IntPtr target = MethodResolver.ByRuntime("PackVisualMemberLarge", "_vc");
             if (target == IntPtr.Zero)
             {
                 Diagnostics.Warn("PackVisualMemberLarge._vc could not be found; the jackets on the pack " +

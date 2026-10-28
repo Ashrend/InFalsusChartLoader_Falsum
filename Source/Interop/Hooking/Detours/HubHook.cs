@@ -17,7 +17,7 @@ namespace InFalsusChartLoader
 
         private static bool InstallHub()
         {
-            IntPtr info = MethodResolver.MethodInfoByRuntime("HubScene", "_WK", "Game.dll", "ifapp.Game.Scenes");
+            IntPtr info = MethodResolver.MethodInfoByRuntime("HubScene", "_WK");
             if (info == IntPtr.Zero || *(IntPtr*)info == IntPtr.Zero)
             {
                 Diagnostics.Warn("HubScene._WK could not be found; the hub's song counts will not follow " +

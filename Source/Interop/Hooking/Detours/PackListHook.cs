@@ -22,7 +22,7 @@ namespace InFalsusChartLoader
 
         private static bool InstallPackList()
         {
-            IntPtr info = MethodResolver.MethodInfoByRuntime("PackSelectScene", "Awake", "Game.dll", "ifapp.Game");
+            IntPtr info = MethodResolver.MethodInfoByRuntime("PackSelectScene", "Awake");
             if (info == IntPtr.Zero || *(IntPtr*)info == IntPtr.Zero ||
                 Il2CppInterop.Runtime.IL2CPP.il2cpp_method_get_param_count(info) != 0)
             {

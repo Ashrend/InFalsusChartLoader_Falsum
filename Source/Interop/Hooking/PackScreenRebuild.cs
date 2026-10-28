@@ -319,8 +319,8 @@ namespace InFalsusChartLoader
             _scrollContentField = FieldResolver.Field("UIScrollListView", "contentContainer");
             _scrollTargetField = FieldResolver.Field("PackSelectScrollContainer", "_Kr");
             _scrollSettledField = FieldResolver.Field("PackSelectScrollContainer", "_lr");
-            _scrollPositionInfo = MethodResolver.MethodInfoByRuntime("Constrained2D", "_iQA", "Game.dll", "ifapp.Game.UI.Common");
-            _scrollSetInfo = MethodResolver.MethodInfoByRuntime("Constrained2D", "_sQA", "Game.dll", "ifapp.Game.UI.Common");
+            _scrollPositionInfo = MethodResolver.MethodInfoByRuntime("Constrained2D", "_iQA");
+            _scrollSetInfo = MethodResolver.MethodInfoByRuntime("Constrained2D", "_sQA");
 
             if (_topScrollField < 0 || _bottomScrollField < 0 || _scrollViewField < 0 ||
                 _scrollContentField < 0 || _scrollTargetField < 0 || _scrollSettledField < 0 ||
@@ -350,9 +350,9 @@ namespace InFalsusChartLoader
             _viewPackField = FieldResolver.Field("_iH", "_RDb");
             _awakeInfo = _awakeInfo != IntPtr.Zero
                 ? _awakeInfo
-                : MethodResolver.MethodInfoByRuntime("PackSelectScene", "Awake", "Game.dll", "ifapp.Game");
-            _selectInfo = MethodResolver.MethodInfoByRuntime("PackSelectScene", "_ic", "Game.dll", "ifapp.Game");
-            _difficultyInfo = MethodResolver.MethodInfoByRuntime("PackSelectScene", "_lc", "Game.dll", "ifapp.Game");
+                : MethodResolver.MethodInfoByRuntime("PackSelectScene", "Awake");
+            _selectInfo = MethodResolver.MethodInfoByRuntime("PackSelectScene", "_ic");
+            _difficultyInfo = MethodResolver.MethodInfoByRuntime("PackSelectScene", "_lc");
 
             if (_sceneLayerField < 0 || _packIndexField < 0 || _packDifficultyField < 0 ||
                 _lastPackIndexField < 0 || _packListField < 0 || _outlineListField < 0 ||
