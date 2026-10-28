@@ -30,22 +30,18 @@ namespace InFalsusChartLoader
         {
             try
             {
-                if (!InteropTypeIndex.ByName().TryGetValue(typeName, out List<Type> types))
-                    return IntPtr.Zero;
+                if (!InteropTypeIndex.Resolve(typeName, out Type type)) return IntPtr.Zero;
 
-                foreach (Type t in types)
+                foreach (MethodInfo mi in type.GetMethods(AnyMethod | BindingFlags.DeclaredOnly))
                 {
-                    foreach (MethodInfo mi in t.GetMethods(AnyMethod | BindingFlags.DeclaredOnly))
-                    {
-                        if (mi.Name != methodName) continue;
+                    if (mi.Name != methodName) continue;
 
-                        FieldInfo f = Il2CppInterop.Common.Il2CppInteropUtils
-                            .GetIl2CppMethodInfoPointerFieldForGeneratedMethod(mi);
-                        if (f == null) continue;
+                    FieldInfo f = Il2CppInterop.Common.Il2CppInteropUtils
+                        .GetIl2CppMethodInfoPointerFieldForGeneratedMethod(mi);
+                    if (f == null) continue;
 
-                        IntPtr info = (IntPtr)f.GetValue(null);
-                        if (info != IntPtr.Zero) return info;
-                    }
+                    IntPtr info = (IntPtr)f.GetValue(null);
+                    if (info != IntPtr.Zero) return info;
                 }
             }
             catch (Exception e)
@@ -65,9 +61,9 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>A method's native address, reached through the runtime.</summary>
-        internal static IntPtr ByRuntime(string typeName, string methodName, string image, string namespaze)
+        internal static IntPtr ByRuntime(string typeName, string methodName)
         {
-            IntPtr klass = ClassOf(typeName, image, namespaze);
+            IntPtr klass = ClassOf(typeName);
             if (klass == IntPtr.Zero) return IntPtr.Zero;
 
             try
@@ -106,12 +102,15 @@ namespace InFalsusChartLoader
                         Il2CppInterop.Runtime.IL2CPP.il2cpp_method_is_inflated(matched) == false)
                     {
                         IntPtr inflated = Inflated(klass, matched, typeName, methodName);
-                        if (inflated != IntPtr.Zero && inflated != found)
+                        if (inflated == IntPtr.Zero)
                         {
-                            Diagnostics.Info($"{typeName}.{methodName} -> 0x{inflated.ToInt64():X} " +
-                                             "(the instantiation, not the definition)");
-                            return inflated;
+                            Diagnostics.Error($"{typeName}.{methodName}: the generic instantiation is not in this build");
+                            return IntPtr.Zero;
                         }
+
+                        Diagnostics.Info($"{typeName}.{methodName} -> 0x{inflated.ToInt64():X} " +
+                                         "(the instantiation, not the definition)");
+                        return inflated;
                     }
 
                     Diagnostics.Info($"{typeName}.{methodName} -> 0x{found.ToInt64():X} (runtime walk)");
@@ -221,11 +220,14 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>A method's <c>MethodInfo</c>, reached through the runtime.</summary>
-        internal static IntPtr MethodInfoByRuntime(string typeName, string methodName, string image, string namespaze)
+        internal static IntPtr MethodInfoByRuntime(string typeName, string methodName)
         {
-            IntPtr klass = ClassOf(typeName, image, namespaze);
-            if (klass == IntPtr.Zero) return IntPtr.Zero;
+            IntPtr klass = ClassOf(typeName);
+            return klass == IntPtr.Zero ? IntPtr.Zero : MethodInfoIn(klass, typeName, methodName);
+        }
 
+        private static IntPtr MethodInfoIn(IntPtr klass, string typeName, string methodName)
+        {
             try
             {
                 Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_class_init(klass);
@@ -250,17 +252,14 @@ namespace InFalsusChartLoader
             return IntPtr.Zero;
         }
 
-        /// <summary>A class pointer: the generated store first, then the runtime by image and name.</summary>
-        private static IntPtr ClassOf(string typeName, string image, string namespaze)
+        /// <summary>A class pointer from the generated types.</summary>
+        private static IntPtr ClassOf(string typeName)
         {
             IntPtr klass = FieldResolver.ClassPointer(typeName);
-            if (klass != IntPtr.Zero) return klass;
+            if (klass == IntPtr.Zero)
+                Diagnostics.Warn($"{typeName} could not be found in the generated types");
 
-            klass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(image, namespaze, typeName);
-            if (klass != IntPtr.Zero) return klass;
-
-            Diagnostics.Warn($"{typeName} could not be found, by generated store or by image '{image}'");
-            return IntPtr.Zero;
+            return klass;
         }
     }
 }

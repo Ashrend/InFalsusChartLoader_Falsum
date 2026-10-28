@@ -21,7 +21,7 @@ namespace InFalsusChartLoader
 
         private static bool InstallPlayGate()
         {
-            IntPtr target = MethodResolver.ByRuntime("SongSelectScene", "_sN", "Game.dll", "ifapp.Game.Scenes");
+            IntPtr target = MethodResolver.ByRuntime("SongSelectScene", "_sN");
             if (target == IntPtr.Zero)
             {
                 Diagnostics.Warn("SongSelectScene._sN could not be resolved; whether a song may be " +
@@ -109,7 +109,7 @@ namespace InFalsusChartLoader
 
         private static bool InstallSceneSwitch()
         {
-            IntPtr target = MethodResolver.ByRuntime("_CB", "MoveNext", "Game.dll", "ifapp.Game.Scenes");
+            IntPtr target = MethodResolver.ByRuntime("_CB", "MoveNext");
             if (target == IntPtr.Zero)
             {
                 Diagnostics.Warn("CoreScene._CB.MoveNext could not be resolved; where the scene switch " +

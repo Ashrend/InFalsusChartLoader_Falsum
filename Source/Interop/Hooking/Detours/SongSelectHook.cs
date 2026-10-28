@@ -6,11 +6,6 @@ namespace InFalsusChartLoader
 {
     internal static unsafe partial class Hooks
     {
-        /// <summary>`SongSelectScene._MN` — applies a selection.</summary>
-        private const string SceneImage = "Game.dll";
-
-        private const string SceneNamespace = "ifapp.Game.Scenes";
-
         /// <summary>Selections applied.</summary>
         internal static long ApplyCalls;
 
@@ -27,7 +22,7 @@ namespace InFalsusChartLoader
 
         private static bool InstallSongSelect()
         {
-            IntPtr target = MethodResolver.ByRuntime("SongSelectScene", "_MN", SceneImage, SceneNamespace);
+            IntPtr target = MethodResolver.ByRuntime("SongSelectScene", "_MN");
             if (target == IntPtr.Zero)
             {
                 Diagnostics.Warn("SongSelectScene._MN could not be resolved; a song with a picture per " +
@@ -86,9 +81,6 @@ namespace InFalsusChartLoader
             return applied;
         }
 
-        /// <summary>The namespace `_NH` — the player's save — is resolved in: the scenes' parent.</summary>
-        private const string SaveNamespace = "ifapp.Game";
-
         /// <summary>`_NH._UoA` — the state of one difficulty of one song.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate byte DifficultyStateFn(IntPtr save, IntPtr access, IntPtr songInfo,
@@ -102,7 +94,7 @@ namespace InFalsusChartLoader
 
         private static bool InstallDifficultyState()
         {
-            IntPtr target = MethodResolver.ByRuntime("_NH", "_UoA", SceneImage, SaveNamespace);
+            IntPtr target = MethodResolver.ByRuntime("_NH", "_UoA");
             if (target == IntPtr.Zero)
             {
                 Diagnostics.Error("_NH._UoA: no method by that name in this build; a custom song's " +

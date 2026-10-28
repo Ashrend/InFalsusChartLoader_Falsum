@@ -59,19 +59,16 @@ namespace InFalsusChartLoader
 
         private static IntPtr Require(string typeName, string assembly, string namespaze)
         {
-            IntPtr klass = FieldResolver.ClassPointer(typeName);
-            if (klass != IntPtr.Zero) return klass;
-
-            klass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(assembly, namespaze, typeName);
+            IntPtr klass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(assembly, namespaze, typeName);
             if (klass != IntPtr.Zero)
             {
                 Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_class_init(klass);
 
-                Diagnostics.Info($"{typeName} found by assembly, not by the generated store");
+                Diagnostics.Info($"{typeName} found by assembly");
                 return klass;
             }
 
-            Diagnostics.Warn($"the game's {typeName} type could not be found, by store or by assembly");
+            Diagnostics.Error($"{typeName}: no class to ask in this build");
             return IntPtr.Zero;
         }
 

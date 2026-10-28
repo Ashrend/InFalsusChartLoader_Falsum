@@ -41,34 +41,34 @@ namespace InFalsusChartLoader
         /// <summary>An enum member's value by name, or -1 when it cannot be resolved.</summary>
         internal static int EnumValue(string typeName, string memberName)
         {
+            if (!InteropTypeIndex.Resolve(typeName, out Type type) || !type.IsEnum)
+            {
+                _unresolved++;
+                Diagnostics.Error($"{typeName}.{memberName}: no enum member by that name in this build");
+                return -1;
+            }
+
             try
             {
-                if (InteropTypeIndex.ByName().TryGetValue(typeName, out List<Type> types))
+                FieldInfo member = type.GetField(memberName, BindingFlags.Public | BindingFlags.Static);
+                object raw = member?.GetRawConstantValue();
+                if (raw == null)
                 {
-                    foreach (Type type in types)
-                    {
-                        if (type == null || !type.IsEnum) continue;
-
-                        FieldInfo member = type.GetField(memberName,
-                                                          BindingFlags.Public | BindingFlags.Static);
-                        if (member == null) continue;
-
-                        object raw = member.GetRawConstantValue();
-                        if (raw == null) continue;
-
-                        _asked++;
-                        return Convert.ToInt32(raw);
-                    }
+                    _unresolved++;
+                    Diagnostics.Error($"{typeName}.{memberName}: no enum member by that name in this build");
+                    return -1;
                 }
+
+                _asked++;
+                return Convert.ToInt32(raw);
             }
             catch (Exception e)
             {
+                _unresolved++;
                 Diagnostics.Warn($"{typeName}.{memberName} could not be read: {Diagnostics.Describe(e)}");
+                Diagnostics.Error($"{typeName}.{memberName}: no enum member by that name in this build");
+                return -1;
             }
-
-            _unresolved++;
-            Diagnostics.Error($"{typeName}.{memberName}: no enum member by that name in this build");
-            return -1;
         }
 
         // ---------------------------------------------------------------- sizes
@@ -118,28 +118,22 @@ namespace InFalsusChartLoader
         /// <summary>The class pointer for a generated type.</summary>
         internal static IntPtr ClassPointer(string typeName)
         {
-            if (!InteropTypeIndex.ByName().TryGetValue(typeName, out List<Type> types))
-                return IntPtr.Zero;
+            if (!InteropTypeIndex.Resolve(typeName, out Type type)) return IntPtr.Zero;
 
-            foreach (Type type in types)
+            try
             {
-                try
-                {
-                    FieldInfo pointer = typeof(Il2CppInterop.Runtime.Il2CppClassPointerStore<>)
-                        .MakeGenericType(type)
-                        .GetField("NativeClassPtr", BindingFlags.Public | BindingFlags.Static);
+                FieldInfo pointer = typeof(Il2CppInterop.Runtime.Il2CppClassPointerStore<>)
+                    .MakeGenericType(type)
+                    .GetField("NativeClassPtr", BindingFlags.Public | BindingFlags.Static);
 
-                    if (pointer == null) continue;
-
-                    IntPtr klass = (IntPtr)pointer.GetValue(null);
-                    if (klass != IntPtr.Zero) return klass;
-                }
-                catch (Exception e)
-                {
-                    Diagnostics.Warn($"{typeName} class pointer could not be read: {Diagnostics.Describe(e)}");
-                }
+                return pointer == null ? IntPtr.Zero : (IntPtr)pointer.GetValue(null);
             }
-            return IntPtr.Zero;
+            catch (Exception e)
+            {
+                Diagnostics.Warn($"{typeName}: the class pointer read failed: {Diagnostics.Describe(e)}");
+                Diagnostics.Error($"{typeName}: no class to ask in this build");
+                return IntPtr.Zero;
+            }
         }
 
         /// <summary>A class's statics block.</summary>
@@ -165,21 +159,17 @@ namespace InFalsusChartLoader
 
             try
             {
-                if (!InteropTypeIndex.ByName().TryGetValue(typeName, out List<Type> types))
-                    return false;
+                if (!InteropTypeIndex.Resolve(typeName, out Type type)) return false;
 
-                foreach (Type type in types)
-                {
-                    FieldInfo pointer = PointerField(type, fieldName);
-                    if (pointer == null) continue;
+                FieldInfo pointer = PointerField(type, fieldName);
+                if (pointer == null) return false;
 
-                    IntPtr info = (IntPtr)pointer.GetValue(null);
-                    if (info == IntPtr.Zero) continue;
+                IntPtr info = (IntPtr)pointer.GetValue(null);
+                if (info == IntPtr.Zero) return false;
 
-                    offset = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(info) -
-                             (IsValueType(ClassOf(type)) ? ObjectHeader : 0);
-                    return true;
-                }
+                offset = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(info) -
+                         (IsValueType(ClassOf(type)) ? ObjectHeader : 0);
+                return true;
             }
             catch (Exception e)
             {
