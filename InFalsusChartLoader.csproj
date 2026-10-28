@@ -10,7 +10,7 @@
     <Configurations>Debug;Release;BepInExDebug;BepInExRelease</Configurations>
 
     <!-- The assembly's version number. -->
-    <AssemblyVersion>0.2.2</AssemblyVersion>
+    <AssemblyVersion>0.3.0</AssemblyVersion>
   </PropertyGroup>
 
   <!-- Which loader this build targets, and the define it compiles with. -->

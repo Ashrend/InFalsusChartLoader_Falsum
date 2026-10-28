@@ -7,12 +7,24 @@ namespace InFalsusChartLoader
     internal static class ModCore
     {
         /// <summary>The mod's version, shared by both loader entries.</summary>
-        internal const string Version = "0.2.2";
+        internal const string Version = "0.3.0";
 
         /// <summary>What was imported, waiting for the game's data to exist so it can be registered.</summary>
         private static List<ChartInfo> _imported = new List<ChartInfo>();
 
         private static bool _registered;
+
+        /// <summary>Whether the first registration has been attempted.</summary>
+        internal static bool Registered => _registered;
+
+        /// <summary>Whether the first import found anything to register.</summary>
+        internal static bool HasImported => _imported.Count > 0;
+
+        /// <summary>Marks the tables as ready after a reload registered them.</summary>
+        internal static void MarkRegistered() => _registered = true;
+
+        /// <summary>Keeps the current model in step with what the reloader applied.</summary>
+        internal static void Adopt(List<ChartInfo> charts) => _imported = charts;
 
 #if DEBUG
         /// <summary>Frames seen, for the probe's timer.</summary>
@@ -45,9 +57,9 @@ namespace InFalsusChartLoader
                 _imported = ChartLibrary.Import(root, Validate);
                 Diagnostics.Load($"charts: {_imported.Count} imported");
 
-                bool worthHooking = _imported.Count > 0;
-                if (worthHooking) Hooks.Install();
-                else Diagnostics.Info("no charts were imported, so no hooks are being installed");
+                Reload.Start(root);
+
+                Hooks.Install();
 
 #if DEBUG
                 Probe.Startup(root, codecReady, assetsReady, Hooks.Installed, Hooks.Attempted);
@@ -63,18 +75,42 @@ namespace InFalsusChartLoader
         internal static void Update()
         {
             VideoBackground.Follow();
+            Reload.Poll();
 
 #if DEBUG
             if (++_frames % 600 == 0) Diagnostics.Info("probe: counters       " + Probe.Status());
 #endif
 
-            if (_registered || _imported.Count == 0) return;
+            if (_registered) return;
 
             try
             {
                 if (!SongCatalog.TryGetAssets(out IntPtr songData, out IntPtr packData))
                 {
                     if (SongCatalog.Unusable) _registered = true;
+                    return;
+                }
+
+                if (_imported.Count == 0)
+                {
+                    if (SongCatalog.SetupEmptyPack(packData))
+                    {
+                        if (PackSetup.TryGetVisuals(out IntPtr emptyVisuals))
+                            PackSetup.ExtendVisuals(emptyVisuals, SongCatalog.CustomPackId);
+                        else
+                            Diagnostics.Warn("the pack visual table could not be reached");
+
+                        PackSetup.RefreshLookup(packData);
+                        PackSetup.SetPackName(SongCatalog.CustomPackId, SongCatalog.PackName);
+                    }
+                    else
+                    {
+                        Diagnostics.Error("the custom pack could not be prepared while no charts are loaded; " +
+                                          "a chart added in the song select will not show its category until " +
+                                          "the scene is entered again");
+                    }
+
+                    _registered = true;
                     return;
                 }
 
@@ -170,7 +206,7 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>Checks the charts a folder imports.</summary>
-        private static string Validate(ChartInfo info)
+        internal static string Validate(ChartInfo info)
         {
             byte[] scratch = new byte[32];
             for (int d = 0; d < ChartInfo.Difficulties; d++)

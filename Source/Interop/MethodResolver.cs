@@ -26,7 +26,11 @@ namespace InFalsusChartLoader
         }
 
         /// <summary>The runtime's <c>MethodInfo</c> for a method, or zero.</summary>
-        internal static IntPtr MethodInfoOf(string typeName, string methodName)
+        internal static IntPtr MethodInfoOf(string typeName, string methodName) =>
+            MethodInfoOf(typeName, methodName, -1);
+
+        /// <summary>The runtime's <c>MethodInfo</c> for a method with a given parameter count.</summary>
+        internal static IntPtr MethodInfoOf(string typeName, string methodName, int parameters)
         {
             try
             {
@@ -35,6 +39,7 @@ namespace InFalsusChartLoader
                 foreach (MethodInfo mi in type.GetMethods(AnyMethod | BindingFlags.DeclaredOnly))
                 {
                     if (mi.Name != methodName) continue;
+                    if (parameters >= 0 && mi.GetParameters().Length != parameters) continue;
 
                     FieldInfo f = Il2CppInterop.Common.Il2CppInteropUtils
                         .GetIl2CppMethodInfoPointerFieldForGeneratedMethod(mi);
@@ -224,6 +229,20 @@ namespace InFalsusChartLoader
         {
             IntPtr klass = ClassOf(typeName);
             return klass == IntPtr.Zero ? IntPtr.Zero : MethodInfoIn(klass, typeName, methodName);
+        }
+
+        /// <summary>A method's <c>MethodInfo</c> for a type reached by image and namespace.</summary>
+        internal static IntPtr MethodInfoByRuntimeInImage(string image, string namespaze, string typeName,
+                                                          string methodName)
+        {
+            IntPtr klass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(image, namespaze, typeName);
+            if (klass == IntPtr.Zero)
+            {
+                Diagnostics.Warn($"{namespaze}.{typeName} could not be found in image '{image}'");
+                return IntPtr.Zero;
+            }
+
+            return MethodInfoIn(klass, namespaze + "." + typeName, methodName);
         }
 
         private static IntPtr MethodInfoIn(IntPtr klass, string typeName, string methodName)

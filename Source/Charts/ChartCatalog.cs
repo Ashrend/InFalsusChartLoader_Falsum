@@ -16,6 +16,9 @@ namespace InFalsusChartLoader
         /// <summary>Registers a chart under the name the game will request.</summary>
         internal static void Adopt(ChartInfo info) => ByBase[info.BaseName] = info;
 
+        /// <summary>Drops every name, before a rebuilt model is adopted.</summary>
+        internal static void Reset() => ByBase.Clear();
+
         /// <summary>Answers a chart request; false when the name is not this mod's.</summary>
         internal static bool TryServe(IntPtr namePtr, IntPtr result)
         {

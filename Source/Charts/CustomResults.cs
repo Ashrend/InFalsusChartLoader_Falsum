@@ -63,7 +63,6 @@ namespace InFalsusChartLoader
         internal static void Prepare()
         {
             if (Ready) return;
-
             try
             {
                 IntPtr save = PlayerSave();
@@ -144,6 +143,16 @@ namespace InFalsusChartLoader
             {
                 PrepareFailed(Diagnostics.Describe(e));
             }
+        }
+
+        /// <summary>Moves the stored records onto the rebuilt song ids.</summary>
+        internal static void MigrateAndSave()
+        {
+            if (Table == IntPtr.Zero) return;
+
+            long before = ResultKeys.Refiled;
+            ResultKeys.Migrate(Table);
+            if (ResultKeys.Refiled > before) Save();
         }
 
         /// <summary>Reports that the table could not be prepared.</summary>

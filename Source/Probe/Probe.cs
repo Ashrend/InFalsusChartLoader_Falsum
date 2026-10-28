@@ -135,7 +135,8 @@ namespace InFalsusChartLoader
             $"unlock={Hooks.UnlockFills}/{Hooks.UnlockHidden} " +
             $"apply={Hooks.ApplyCalls}/{Hooks.ApplyReloaded} " +
             $"diff={Selection.AppliedDifficulty} song={Selection.AppliedSong} " +
-            $"pack={Hooks.PackDifficultyCalls}/{Hooks.PackCardsRebuilt} " +
+            $"pack={Hooks.PackDifficultyCalls}/{Hooks.PackCardsRebuilt} pv={Hooks.PackVisualRebuilds} " +
+            $"ps={Hooks.PackSelectCalls}/{Hooks.PackViewSwaps} " +
             $"switch={Hooks.SceneSwitchCalls}@{Hooks.SceneSwitchLastState}" +
             (Hooks.WaitProgress() is string waiting ? $" wait={waiting}" : "") + " " +
             $"jackets={JacketCatalog.Asked}/{JacketCatalog.Claimed} " +

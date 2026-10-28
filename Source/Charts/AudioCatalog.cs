@@ -14,12 +14,16 @@ namespace InFalsusChartLoader
         {
             internal int Index;
             internal AudioCodec.Prepared Audio;
+            internal bool Retired;
         }
 
         private static readonly Dictionary<string, Entry> ByBase =
             new Dictionary<string, Entry>(StringComparer.Ordinal);
 
         private static readonly Dictionary<int, Entry> ByIndex = new Dictionary<int, Entry>();
+
+        /// <summary>Entries an open reader may still be serving; released when the scene switch finishes.</summary>
+        private static readonly List<Entry> Retired = new List<Entry>();
 
         /// <summary>Reads served, bytes handed over, and names resolved.</summary>
         internal static long Served, ServedBytes, Resolved;
@@ -30,15 +34,50 @@ namespace InFalsusChartLoader
 
         /// <summary>The byte length of a song's prepared audio, or -1.</summary>
         internal static int BytesOf(string baseName) =>
-            ByBase.TryGetValue(baseName, out Entry entry) ? entry.Audio.Length : -1;
+            ByBase.TryGetValue(baseName, out Entry entry) && entry.Audio != null
+                ? entry.Audio.Length
+                : -1;
 
         /// <summary>Prepares a song's audio and assigns it an index.</summary>
         internal static bool Add(string baseName, string path, out string reason)
         {
             reason = null;
 
-            AudioCodec.Prepared audio = AudioCodec.Load(path, out reason);
-            if (audio == null) return false;
+            if (!Prepare(path, out AudioCodec.Prepared audio, out reason)) return false;
+            return Adopt(baseName, audio, out reason);
+        }
+
+        /// <summary>Reads and transforms a file without registering it.</summary>
+        internal static bool Prepare(string path, out AudioCodec.Prepared audio, out string reason) =>
+            (audio = AudioCodec.Load(path, out reason)) != null;
+
+        /// <summary>Puts prepared audio on a song's index, giving changed audio an index of its own.</summary>
+        internal static bool Adopt(string baseName, AudioCodec.Prepared audio, out string reason)
+        {
+            reason = null;
+
+            if (ByBase.TryGetValue(baseName, out Entry existing))
+            {
+                if (existing.Audio != null && Same(existing.Audio, audio)) return true;
+
+                int oldIndex = existing.Index;
+                int oldLength = existing.Audio != null ? existing.Audio.Length : -1;
+
+                int fresh = StreamingAssets.Add(audio.Length);
+                if (fresh < 0)
+                {
+                    reason = "the game's asset manager would not take another file";
+                    return false;
+                }
+
+                Retire(existing);
+                var entry = new Entry { Index = fresh, Audio = audio };
+                ByBase[baseName] = entry;
+                ByIndex[fresh] = entry;
+                Diagnostics.Info($"audio '{baseName}' -> index {fresh}, {audio.Length} bytes " +
+                                 $"(was {oldIndex}, {oldLength} bytes)");
+                return true;
+            }
 
             int index = StreamingAssets.Add(audio.Length);
             if (index < 0)
@@ -47,11 +86,57 @@ namespace InFalsusChartLoader
                 return false;
             }
 
-            var entry = new Entry { Index = index, Audio = audio };
-            ByBase[baseName] = entry;
-            ByIndex[index] = entry;
+            var added = new Entry { Index = index, Audio = audio };
+            ByBase[baseName] = added;
+            ByIndex[index] = added;
             Diagnostics.Info($"audio '{baseName}' -> index {index}, {audio.Length} bytes");
             return true;
+        }
+
+        /// <summary>Drops the songs that are no longer in the model, keeping their indices for a return.</summary>
+        internal static void Prune(ICollection<string> keep)
+        {
+            foreach (string name in new List<string>(ByBase.Keys))
+            {
+                if (keep.Contains(name)) continue;
+
+                Entry entry = ByBase[name];
+                ByBase.Remove(name);
+                Retire(entry);
+            }
+        }
+
+        /// <summary>Releases the audio the finished scene switch no longer has open.</summary>
+        internal static void ReleaseRetired()
+        {
+            if (Retired.Count == 0) return;
+
+            foreach (Entry entry in Retired)
+            {
+                ByIndex.Remove(entry.Index);
+                entry.Audio = null;
+                Diagnostics.Info($"probe: audio released index={entry.Index}");
+            }
+
+            Retired.Clear();
+        }
+
+        /// <summary>Keeps a superseded entry's index and bytes for any open reader.</summary>
+        private static void Retire(Entry entry)
+        {
+            if (entry.Retired) return;
+
+            entry.Retired = true;
+            Retired.Add(entry);
+        }
+
+        /// <summary>Whether two prepared audio buffers hold the same bytes.</summary>
+        private static bool Same(AudioCodec.Prepared left, AudioCodec.Prepared right)
+        {
+            if (ReferenceEquals(left, right)) return true;
+            if (left == null || right == null) return false;
+            if (left.Length != right.Length) return false;
+            return left.Bytes.AsSpan().SequenceEqual(right.Bytes);
         }
 
         /// <summary>Resolves a custom song's audio name to its index.</summary>
@@ -101,6 +186,7 @@ namespace InFalsusChartLoader
             long handle = Memory.I64(record + Offsets.Runtime.ReadRecord.Handle);
             int index = (int)(handle & Offsets.Runtime.ReadRecord.IndexMask);
             if (!ByIndex.TryGetValue(index, out Entry entry)) return false;
+            if (entry.Audio == null) return false;
 
             IntPtr info = Memory.Ptr(record + Offsets.Runtime.ReadRecord.Info);
             if (info == IntPtr.Zero) return false;

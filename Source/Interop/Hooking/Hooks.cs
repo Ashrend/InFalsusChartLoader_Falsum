@@ -32,6 +32,9 @@ namespace InFalsusChartLoader
         /// <summary>Chart starts.</summary>
         internal static long ChartStarts;
 
+        /// <summary>Whether a `GameScene` is running; reloads wait until it is gone.</summary>
+        internal static bool Playing;
+
         /// <summary>Pauses and resumes of the scene's music.</summary>
         internal static long MusicPauses, MusicResumes;
 
@@ -57,16 +60,20 @@ namespace InFalsusChartLoader
 
             Count(InstallChartLoad());
             Count(InstallChartStart());
+            Count(InstallGameEnd());
             Count(InstallPause());
             Count(InstallAudioLoad());
             Count(InstallJacket());
             Count(InstallSongSelect());
             Count(InstallDifficultyState());
             Count(InstallPackVisual());
+            Count(InstallPackSelect());
+            Count(InstallPackList());
             Count(InstallCustomResults());
             Count(InstallResultsUnlock());
             Count(InstallPlayGate());
             Count(InstallSceneSwitch());
+            Count(InstallHub());
 
             Installed = installed;
             Attempted = attempted;
@@ -78,16 +85,20 @@ namespace InFalsusChartLoader
 
         internal static void Uninstall()
         {
+            DetachHub();
             DetachSceneSwitch();
             DetachPlayGate();
             DetachResultsUnlock();
             DetachCustomResults();
+            DetachPackSelect();
+            DetachPackList();
             DetachPackVisual();
             DetachDifficultyState();
             DetachSongSelect();
             DetachJacket();
             DetachAudioLoad();
             DetachPause();
+            DetachGameEnd();
             DetachChartStart();
             DetachChartLoad();
         }
@@ -124,11 +135,14 @@ namespace InFalsusChartLoader
             ChartMaterial,
             Background,
             ChartStart,
+            GameEnd,
             MusicPause,
             MusicResume,
             SongSelectApply,
             DifficultyState,
             PackVisual,
+            PackSelect,
+            PackList,
             PackRow,
             ResultRead,
             ResultReadFull,
@@ -137,6 +151,7 @@ namespace InFalsusChartLoader
             ResultsUnlock,
             PlayGate,
             SceneSwitch,
+            HubRefresh,
         }
 
         /// <summary>Whether a detour landed.</summary>
@@ -171,11 +186,14 @@ namespace InFalsusChartLoader
             Hook.ChartMaterial => "AddressableHandleAutoReleaser._LIA",
             Hook.Background => "GameplayBackgrounds._UmA",
             Hook.ChartStart => "GameScene._rk",
+            Hook.GameEnd => "GameScene.OnDestroy",
             Hook.MusicPause => "_Dg._hiA",
             Hook.MusicResume => "_Dg._KiA",
             Hook.SongSelectApply => "SongSelectScene._MN",
             Hook.DifficultyState => "_NH._UoA",
             Hook.PackVisual => "PackVisualMemberLarge._vc",
+            Hook.PackSelect => "PackVisualMemberLarge._Ef",
+            Hook.PackList => "PackSelectScene.Awake",
             Hook.PackRow => "the pack row accessor (SongSelectPackAssets[])",
             Hook.ResultRead => "GameResultsV4.TryGetResult(song)",
             Hook.ResultReadFull => "GameResultsV4.TryGetResult(song, full)",
@@ -184,6 +202,7 @@ namespace InFalsusChartLoader
             Hook.ResultsUnlock => "DifficultyUnlockContainer._GB",
             Hook.PlayGate => "SongSelectScene._sN",
             Hook.SceneSwitch => "CoreScene._CB.MoveNext",
+            Hook.HubRefresh => "HubScene._WK",
             _ => "(unknown hook)",
         };
 #endif
