@@ -1,4 +1,4 @@
-# InFalsusChartLoader
+# InFalsusChartLoader_Falsum
 
 In Falsus的自制谱加载Mod，使用[MelonLoader](https://github.com/LavaGang/MelonLoader)
 
