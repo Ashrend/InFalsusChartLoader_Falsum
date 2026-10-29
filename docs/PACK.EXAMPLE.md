@@ -6,14 +6,12 @@
 Charts/
   [Pack]test1/
     pack
-    pack_cover.png
     abc/
       abc.falsum
 ```
 
 - `[Pack]test1`：`test1` 是逻辑曲包 ID。
 - `pack`：曲包元数据，无扩展名。
-- `pack_cover.png`：可选曲包封面。
 - `abc/`：曲包内的一首歌曲目录；歌曲 ID 仍以 `if.id` 或 `.falsum` 的 `songId` 为准。
 - 包内歌曲目录可以包含 `if`，也可以包含 `.falsum`。
 
@@ -27,7 +25,8 @@ Charts/
     "ko": "테스트 팩",
     "zh-Hant": "測試曲包",
     "zh-Hans": "测试曲包"
-  }
+  },
+  "pack":"song"
 }
 ```
 
@@ -45,14 +44,15 @@ Charts/
 
 `当前语言 → en → ja → ko → zh-Hant → zh-Hans`
 
+支持的曲包键
+| 键 | 位置 |
+|---|---|
+| `story` | 剧情曲包 |
+| `song` | DLC曲包 |
+
+留空或者无会自动回退"story"
+
 `pack` 必须至少有一个非空名称；否则整个曲包跳过。
-
-## 封面
-
-- 文件名固定为 `pack_cover.png`。
-- 必须是 Mod 的 PNG 解码器支持的 PNG。
-- 缺失或解码失败时，曲包继续加载，使用游戏已有曲包视觉。
-- 封面会应用到曲包选择界面的大卡/小卡以及普通/悬停/完成状态。
 
 ## 排序
 
