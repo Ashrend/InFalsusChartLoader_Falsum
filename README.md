@@ -76,9 +76,9 @@ Charts/
 }
 ```
 
-完整示例见 [PACK.EXAMPLE.md](./PACK.EXAMPLE.md)。
+完整示例见 [PACK.EXAMPLE.md](./docs/PACK.EXAMPLE.md)。
 
-单曲 `if` 格式见 [IF.EXAMPLE.md](./IF.EXAMPLE.md)。
+单曲 `if` 格式见 [IF.EXAMPLE.md](./docs/IF.EXAMPLE.md)。
 
 ---
 
