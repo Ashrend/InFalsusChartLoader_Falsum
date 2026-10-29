@@ -38,11 +38,15 @@ build.bat Debug            :: MelonLoader Debug
 
 加载后，选曲界面最上方会出现合集 **IFCL**
 
+*实验性功能*
 如果你想自定义曲包，请在Charts下新建一个前缀为'[Pack]'，名称为英文或数字的文件夹，随后把你想加入乐曲包的乐曲的子文件夹放入该文件夹，加载器会自动归类。
+
+例:
+GAME_PATH/Charts/[Pack]example/test/test.falsum
 
 曲包元数据的读取依赖于'pack'文件，以JSON格式存储，详见[Pack示例例文档](./pack-example.md)
 
-if文件只要有一条信息非法则不会导入该谱面
+if/pack文件只要有一条信息非法则不会导入该谱面/曲包
 
 需要查看完整日志时请使用**Debug构建**
 
@@ -51,8 +55,8 @@ if文件只要有一条信息非法则不会导入该谱面
 ## 致谢
 
 - [MelonLoader](https://github.com/LavaGang/MelonLoader) —— mod 加载器
-- [BepInEx](https://github.com/BepInEx/BepInEx) —— mod 加载器
 - 源仓库(https://github.com/Its-MagicNeko/InFalsusChartLoader)
+- Deepseek
 
 ## 免责声明
 
