@@ -1,6 +1,6 @@
 # InFalsusChartLoader_falsum
 
-In Falsus 的自制谱加载 Mod，使用 [MelonLoader](https://github.com/LavaGang/MelonLoader) 或 [BepInEx](https://github.com/BepInEx/BepInEx) 加载。
+In Falsus 的自制谱加载 Mod，使用 [MelonLoader](https://github.com/LavaGang/MelonLoader) 加载。
 
 ---
 
@@ -11,8 +11,6 @@ In Falsus 的自制谱加载 Mod，使用 [MelonLoader](https://github.com/LavaG
 ```cmd
 build.bat                  :: MelonLoader Release（默认）
 build.bat Debug            :: MelonLoader Debug
-build.bat --BepInEx        :: BepInEx Release
-build.bat --BepInEx Debug  :: BepInEx Debug
 ```
 
 构建产物位于 `bin/`。Release 构建会执行额外的产物字符串检查。
@@ -31,12 +29,6 @@ dotnet run --project Tests/PackRulesTests/PackRulesTests.csproj
 
 1. 安装 MelonLoader。
 2. 将 `InFalsusChartLoader_falsum.dll` 放进游戏目录下的 `Mods` 文件夹。
-3. 从 Steam 启动游戏。
-
-### BepInEx
-
-1. 安装 BepInEx。
-2. 将 DLL 放进 `GAME_PATH\BepInEx\plugins`。
 3. 从 Steam 启动游戏。
 
 ---
@@ -104,7 +96,7 @@ Debug 构建会额外输出曲包、封面和字段解析细节。
 ## 致谢
 
 - [MelonLoader](https://github.com/LavaGang/MelonLoader)
-- [BepInEx](https://github.com/BepInEx/BepInEx)
+- [源仓库](https://github.com/Its-MagicNeko/InFalsusChartLoader)
 
 ## 免责声明
 
