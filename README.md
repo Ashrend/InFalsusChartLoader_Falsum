@@ -49,7 +49,6 @@ Charts/
 Charts/
   [Pack]test1/
     pack
-    pack_cover.png
     abc/
       abc.falsum
 ```
@@ -59,7 +58,6 @@ Charts/
 - `[Pack]` 后面是逻辑曲包 ID，例如 `test1`。
 - `pack` 是无扩展名 JSON 文件，当前支持 `name` 的五个语言键：`en`、`ja`、`ko`、`zh-Hant`、`zh-Hans`。
 - 缺失语言会按 `当前语言 → en → ja → ko → zh-Hant → zh-Hans` 回退。
-- `pack_cover.png` 可选；缺失或无效时回退到游戏已有曲包视觉。
 - 曲包内每个子文件夹是一首歌，继续支持 `if` 和 `.falsum`。
 - 曲包按文件夹名排序，旧的 `IFCL` 位于自定义曲包之后。
 - `pack` 缺失、JSON 无效或没有任何有效名称时，整个曲包跳过。
