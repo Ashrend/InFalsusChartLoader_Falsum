@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Turns a plain audio file into the bytes the game's reader expects.</summary>
     internal static class AudioCodec

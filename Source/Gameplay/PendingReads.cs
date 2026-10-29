@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>The game's outstanding-read sets, kept current after this mod serves a read.</summary>
     internal static unsafe class PendingReads

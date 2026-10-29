@@ -1,6 +1,6 @@
 using System;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>The in-play background video: one <c>VideoPlayer</c> rendering into a material.</summary>
     internal static unsafe class VideoBackground
@@ -106,16 +106,6 @@ namespace InFalsusChartLoader
 
         /// <summary>Whether this is the material the clip built.</summary>
         internal static bool Owns(IntPtr material) => material != IntPtr.Zero && material == _material;
-
-        /// <summary>Drops the prepared clip for a file whose bytes changed.</summary>
-        internal static void Forget(string path)
-        {
-            if (_playing != path) return;
-
-            Stop();
-            _playing = null;
-            _length = -1.0;
-        }
 
         /// <summary>Moves the clip's picture onto a clone of the game's background material.</summary>
         internal static IntPtr Rebase(IntPtr gameMaterial, out string reason)
@@ -482,12 +472,7 @@ namespace InFalsusChartLoader
             if (_player == IntPtr.Zero) return;
 
             string reason = null;
-            if (!Call("Stop", 0, _player, out reason))
-                Diagnostics.Warn($"the background video could not be stopped: {reason}");
-
-            // Clears the source so the file is not held open between songs.
-            if (!Set("set_url", 1, string.Empty, out reason))
-                Diagnostics.Warn($"the background video's source could not be cleared: {reason}");
+            Call("Stop", 0, _player, out reason);
 
             _playing = null;
             _armed = false;
@@ -524,7 +509,7 @@ namespace InFalsusChartLoader
             }
 
             IntPtr* args = stackalloc IntPtr[1];
-            IntPtr name = Il2CppInterop.Runtime.IL2CPP.ManagedStringToIl2Cpp("InFalsusChartLoader background video");
+            IntPtr name = Il2CppInterop.Runtime.IL2CPP.ManagedStringToIl2Cpp("InFalsusChartLoader_falsum background video");
             args[0] = name;
             if (!Invoke(Entry(go, ".ctor", 1), go, args, 1, out reason)) return false;
 

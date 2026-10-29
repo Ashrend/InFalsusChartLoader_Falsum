@@ -1,6 +1,6 @@
 using System;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>A native hook: it detours a game function and offers the function it replaced.</summary>
     internal sealed unsafe class NativeHook<T> where T : Delegate

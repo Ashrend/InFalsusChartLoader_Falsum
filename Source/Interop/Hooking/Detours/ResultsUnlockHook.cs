@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     internal static unsafe partial class Hooks
     {

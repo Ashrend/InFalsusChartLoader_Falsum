@@ -1,6 +1,6 @@
 using System;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Where things are inside the game's objects.</summary>
     internal static class Offsets

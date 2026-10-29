@@ -1,6 +1,6 @@
 using System;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Room for custom files in the game's streaming-asset manager.</summary>
     internal static unsafe class StreamingAssets
@@ -24,12 +24,6 @@ namespace InFalsusChartLoader
 
         /// <summary>Where the next added file goes. Starts past everything the game shipped.</summary>
         private static int _next;
-
-        /// <summary>File slots the model has let go of and a later audio can take.</summary>
-        private static readonly Stack<int> Free = new Stack<int>();
-
-        /// <summary>The first slot this mod allocated; the game's own files sit below it.</summary>
-        private static int _first = None;
 
         internal static bool Resolved => _bg != IntPtr.Zero;
 
@@ -94,9 +88,8 @@ namespace InFalsusChartLoader
 
                 _bg = bg;
                 _next = count;
-                if (_first < 0) _first = count;
 
-                Diagnostics.Info($"streaming assets: {count} files, custom files start at {_first}");
+                Diagnostics.Info($"streaming assets: {count} files, custom files start at {_next}");
                 return true;
             }
             catch (Exception e)
@@ -111,15 +104,6 @@ namespace InFalsusChartLoader
         {
             if (!Resolved) return -1;
 
-            if (Free.Count > 0)
-            {
-                int reused = Free.Pop();
-                if (SetLength(reused, length)) return reused;
-
-                Diagnostics.Warn($"audio slot {reused} could not take a new length");
-                return -1;
-            }
-
             int index = _next;
             int size = index + 1;
 
@@ -133,33 +117,6 @@ namespace InFalsusChartLoader
 
             _next = size;
             return index;
-        }
-
-        /// <summary>Takes a file slot back for a later audio.</summary>
-        internal static void Release(int index)
-        {
-            if (!Resolved || index < _first)
-            {
-                Diagnostics.Warn($"audio slot {index} is not one this mod can reuse");
-                return;
-            }
-
-            Free.Push(index);
-        }
-
-        /// <summary>Rewrites the length the manager holds for a file it already lists.</summary>
-        internal static bool SetLength(int index, long length)
-        {
-            if (!Resolved || index < 0) return false;
-
-            IntPtr lengths = Memory.Ptr(_bg + FieldLengths);
-            if (!Memory.LooksLikeObject(lengths)) return false;
-
-            int count = Memory.I32(lengths + Offsets.Runtime.ArrayLength);
-            if (index >= count) return false;
-
-            Memory.WriteI64(lengths + Offsets.Runtime.ArrayDataOffset + index * sizeof(long), length);
-            return true;
         }
 
         /// <summary>Replaces one of the manager's arrays with a larger one.</summary>

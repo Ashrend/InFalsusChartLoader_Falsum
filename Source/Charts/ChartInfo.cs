@@ -1,6 +1,6 @@
 using System;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>One song folder under <c>Charts/</c>, as its <c>if</c> file describes it.</summary>
     /// <remarks>The four difficulties are positional: 0 Minimal, 1 Evolved, 2 Ultimate, 3 Forbidden.</remarks>
@@ -40,6 +40,9 @@ namespace InFalsusChartLoader
 
         /// <summary>The `if` file's names for the four charts, in difficulty order.</summary>
         internal string[] ChartNames;
+
+        /// <summary>Compiled chart bytes for a runtime .falsum package, or null for file-backed charts.</summary>
+        internal byte[][] ChartBytes;
 
         /// <summary>Whether a difficulty has no chart, in difficulty order.</summary>
         internal bool[] NoChart;

@@ -1,6 +1,6 @@
 using System;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Reads the exception an IL2CPP invoke returned.</summary>
     internal static unsafe class Raised

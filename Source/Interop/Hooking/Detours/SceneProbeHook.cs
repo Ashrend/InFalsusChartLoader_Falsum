@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>The play-gate and scene-switch probes.</summary>
     internal static unsafe partial class Hooks
@@ -21,7 +21,7 @@ namespace InFalsusChartLoader
 
         private static bool InstallPlayGate()
         {
-            IntPtr target = MethodResolver.ByRuntime("SongSelectScene", "_sN");
+            IntPtr target = MethodResolver.ByRuntime("SongSelectScene", "_sN", "Game.dll", "ifapp.Game.Scenes");
             if (target == IntPtr.Zero)
             {
                 Diagnostics.Warn("SongSelectScene._sN could not be resolved; whether a song may be " +
@@ -67,17 +67,6 @@ namespace InFalsusChartLoader
         internal static long SceneSwitchCalls;
         internal static int SceneSwitchLastState = int.MinValue;
 
-        private static bool _releaseReported;
-
-        /// <summary>Says once that the audio a finished scene switch should have released is still held.</summary>
-        private static void ReleaseFailed(Exception e)
-        {
-            if (_releaseReported) return;
-            _releaseReported = true;
-            Diagnostics.Error("the audio a finished scene switch should have released could not be cleared: " +
-                              Diagnostics.Describe(e));
-        }
-
         /// <summary>The object the console switch is waiting on, and its class name.</summary>
         internal static IntPtr SceneSwitchWait;
         internal static string SceneSwitchWaitName;
@@ -120,7 +109,7 @@ namespace InFalsusChartLoader
 
         private static bool InstallSceneSwitch()
         {
-            IntPtr target = MethodResolver.ByRuntime("_CB", "MoveNext");
+            IntPtr target = MethodResolver.ByRuntime("_CB", "MoveNext", "Game.dll", "ifapp.Game.Scenes");
             if (target == IntPtr.Zero)
             {
                 Diagnostics.Warn("CoreScene._CB.MoveNext could not be resolved; where the scene switch " +
@@ -153,12 +142,6 @@ namespace InFalsusChartLoader
         {
             byte more = _moveNextTramp(self, methodInfo);
             SceneSwitchCalls++;
-
-            if (more == 0)
-            {
-                try { AudioCatalog.ReleaseRetired(); }
-                catch (Exception e) { ReleaseFailed(e); }
-            }
 
             if (!Memory.LooksLikeObject(self)) return more;
 

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>The custom charts, keyed by the name the game requests them under.</summary>
     internal static unsafe class ChartCatalog
@@ -15,9 +15,6 @@ namespace InFalsusChartLoader
 
         /// <summary>Registers a chart under the name the game will request.</summary>
         internal static void Adopt(ChartInfo info) => ByBase[info.BaseName] = info;
-
-        /// <summary>Drops every name, before a rebuilt model is adopted.</summary>
-        internal static void Reset() => ByBase.Clear();
 
         /// <summary>Answers a chart request; false when the name is not this mod's.</summary>
         internal static bool TryServe(IntPtr namePtr, IntPtr result)
@@ -38,7 +35,9 @@ namespace InFalsusChartLoader
             bool decoded = false;
             try
             {
-                byte[] bytes = File.ReadAllBytes(path);
+                byte[] bytes = info.ChartBytes != null ? info.ChartBytes[difficulty] : null;
+                if (bytes == null)
+                    bytes = File.ReadAllBytes(path);
                 decoded = ChartCodec.TryDecode(bytes, seed, result, out string reason);
                 if (!decoded) Diagnostics.Error($"'{info.Name}' difficulty {difficulty}: {reason}");
             }

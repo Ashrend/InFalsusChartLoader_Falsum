@@ -2,10 +2,15 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     internal static unsafe partial class Hooks
     {
+        /// <summary>Where `AddressableHandleAutoReleaser` lives, for the runtime's own lookup.</summary>
+        private const string Image = "Game.Common.dll";
+
+        private const string Namespace = "ifapp.Game.Common";
+
         /// <summary>`SongData._apA` — the song's jacket reference.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate IntPtr ApAFn(IntPtr songData, IntPtr songInfo, byte large, IntPtr methodInfo);
@@ -57,7 +62,8 @@ namespace InFalsusChartLoader
 
             bool ok = Landed(Hook.JacketReference, reference, referencePrologue);
 
-            IntPtr load = MethodResolver.ByRuntime("AddressableHandleAutoReleaser", "_MIA");
+            IntPtr load = MethodResolver.ByRuntime("AddressableHandleAutoReleaser", "_MIA",
+                                                   Image, Namespace);
             if (load == IntPtr.Zero)
             {
                 Diagnostics.Error("AddressableHandleAutoReleaser._MIA could not be found; custom " +
@@ -137,7 +143,8 @@ namespace InFalsusChartLoader
         /// <summary>Installs the `_LIA` hook.</summary>
         private static bool InstallChartLoader()
         {
-            IntPtr target = MethodResolver.ByRuntime("AddressableHandleAutoReleaser", "_LIA");
+            IntPtr target = MethodResolver.ByRuntime("AddressableHandleAutoReleaser", "_LIA",
+                                                     Image, Namespace);
             if (target == IntPtr.Zero)
             {
                 Diagnostics.Warn("AddressableHandleAutoReleaser._LIA could not be found; anything " +

@@ -1,7 +1,7 @@
 using System;
 using System.Reflection;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Debug-only report of the generated Unity types.</summary>
     internal static class JacketProbe
@@ -23,15 +23,6 @@ namespace InFalsusChartLoader
                 Diagnostics.Info($"probe: assembly '{name}' location='{Location(asm)}'");
                 Diagnostics.Info($"probe:   identity '{asm.FullName}'");
 
-                Type direct = null;
-                try { direct = asm.GetType("UnityEngine.Texture2D", throwOnError: false); }
-                catch (Exception) { }
-                if (direct != null)
-                {
-                    Report(direct);
-                    continue;
-                }
-
                 Type[] types;
                 try
                 {
@@ -41,14 +32,6 @@ namespace InFalsusChartLoader
                 {
                     types = e.Types;
                     Diagnostics.Info($"probe:   GetTypes threw, {e.LoaderExceptions?.Length ?? 0} loader exception(s)");
-                    if (e.LoaderExceptions != null)
-                    {
-                        foreach (Exception loader in e.LoaderExceptions)
-                        {
-                            if (loader == null) continue;
-                            Diagnostics.Info($"probe:     {loader.GetType().Name}: {loader.Message}");
-                        }
-                    }
                 }
                 catch (Exception e)
                 {
@@ -93,7 +76,7 @@ namespace InFalsusChartLoader
             Diagnostics.Info($"probe:     ({native} field(s) named NativeMethodInfoPtr*, showing up to 5)");
 
             FieldInfo byName = null;
-            try { byName = t.GetField(CtorField, AnyField); }
+            try { byName = t.GetField(CtorField, BindingFlags.Public | BindingFlags.Static); }
             catch (Exception e) { Diagnostics.Info($"probe:     GetField threw {e.GetType().Name}"); }
 
             FieldInfo byHand = null;

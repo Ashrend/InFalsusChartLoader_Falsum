@@ -1,6 +1,6 @@
 using System;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>The song and difficulty the game is currently on.</summary>
     internal static class Selection
@@ -153,12 +153,9 @@ namespace InFalsusChartLoader
         private static ushort Shadow(ushort songId) => (ushort)(songId ^ 0xFFFF);
 
         /// <summary>Makes the game reload the pictures for a difficulty change.</summary>
-        internal static bool ShadowUnlessSongChanged(IntPtr scene, ushort songId, bool difficultyChanged) =>
-            difficultyChanged && ForcePictureReload(scene, songId);
-
-        /// <summary>Makes the game's next selection apply reload the pictures it loaded before.</summary>
-        internal static bool ForcePictureReload(IntPtr scene, ushort songId)
+        internal static bool ShadowUnlessSongChanged(IntPtr scene, ushort songId, bool difficultyChanged)
         {
+            if (!difficultyChanged) return false;
             if (!Memory.LooksLikeObject(scene)) return false;
             if (!Fields()) return false;
             if (Memory.U16(scene + SelectedSong) != songId) return false;

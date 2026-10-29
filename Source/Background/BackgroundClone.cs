@@ -1,6 +1,6 @@
 using System;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Clones the game's background material and puts this mod's picture on it.</summary>
     internal static class BackgroundClone

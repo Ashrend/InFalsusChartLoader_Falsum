@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Unchecked reads and writes of game memory, and the object-pointer check.</summary>
     internal static unsafe class Memory

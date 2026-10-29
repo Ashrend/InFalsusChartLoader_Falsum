@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>The mod's logging: Debug-only narration, and the lines a Release keeps.</summary>
     internal static class Diagnostics
@@ -14,7 +14,7 @@ namespace InFalsusChartLoader
             internal static void Warning(string message) => MelonLoader.MelonLogger.Warning(message);
 #elif BEPINEX
             private static readonly BepInEx.Logging.ManualLogSource Source =
-                BepInEx.Logging.Logger.CreateLogSource("InFalsusChartLoader");
+                BepInEx.Logging.Logger.CreateLogSource("InFalsusChartLoader_falsum");
 
             internal static void Msg(string message) => Source.LogInfo(message);
             internal static void Error(string message) => Source.LogError(message);

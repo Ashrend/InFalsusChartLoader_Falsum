@@ -5,10 +5,10 @@ using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using UnityEngineCore::UnityEngine;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>BepInEx's entry point; load and unload hand over to <see cref="ModCore"/>.</summary>
-    [BepInPlugin("MagicNeko-InFalsusChartLoader", "InFalsusChartLoader",
+    [BepInPlugin("MagicNeko-InFalsusChartLoader_falsum", "InFalsusChartLoader_falsum",
                  ModCore.Version)]
     [BepInProcess("infalsus.exe")]
     public class ChartLoaderPlugin : BasePlugin

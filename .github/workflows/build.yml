@@ -47,26 +47,26 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: InFalsusChartLoader-MelonLoader-Release
-          path: bin/Release/InFalsusChartLoader.dll
+          name: InFalsusChartLoader_falsum-MelonLoader-Release
+          path: bin/Release/InFalsusChartLoader_falsum.dll
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
-          name: InFalsusChartLoader-MelonLoader-Debug
-          path: bin/Debug/InFalsusChartLoader.dll
+          name: InFalsusChartLoader_falsum-MelonLoader-Debug
+          path: bin/Debug/InFalsusChartLoader_falsum.dll
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
-          name: InFalsusChartLoader-BepInEx-Release
-          path: bin/BepInExRelease/InFalsusChartLoader.dll
+          name: InFalsusChartLoader_falsum-BepInEx-Release
+          path: bin/BepInExRelease/InFalsusChartLoader_falsum.dll
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
-          name: InFalsusChartLoader-BepInEx-Debug
-          path: bin/BepInExDebug/InFalsusChartLoader.dll
+          name: InFalsusChartLoader_falsum-BepInEx-Debug
+          path: bin/BepInExDebug/InFalsusChartLoader_falsum.dll
           if-no-files-found: error
 
   release:
@@ -79,10 +79,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: InFalsusChartLoader-*
+          pattern: InFalsusChartLoader_falsum-*
 
       - run: |
-          for d in InFalsusChartLoader-*/; do
+          for d in InFalsusChartLoader_falsum-*/; do
             zip -rjq "${d%/}.zip" "$d"
           done
 

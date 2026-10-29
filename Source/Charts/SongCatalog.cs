@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Adds the custom songs to the game's song and pack tables.</summary>
     internal static unsafe class SongCatalog
@@ -104,11 +104,21 @@ namespace InFalsusChartLoader
         private static int PackInfoSlug => Offsets.Pack.Slug;    // string
         private static int PackInfoSongs => Offsets.Pack.Songs;  // SongId[]
 
-        /// <summary>This mod's pack id, taken from the live pack table.</summary>
-        internal static int CustomPackId = -1;
+        /// <summary>
+        /// Where in the pack array the custom packs are inserted. -1 means append:
+        /// shipped packs keep their original list indices and visual rows.
+        /// </summary>
+        private const int CustomPackIndex = -1;
 
-        /// <summary>Where in the pack array this mod's pack is inserted.</summary>
-        private const int CustomPackIndex = 1;
+        private static int InsertIndex(int oldCount) =>
+            CustomPackIndex >= 0 ? CustomPackIndex : oldCount;
+
+        /// <summary>The game pack ids this run handed out.</summary>
+        internal static readonly HashSet<int> CustomPackIds = new HashSet<int>();
+
+        /// <summary>The custom packs, keyed by their game pack id.</summary>
+        internal static readonly Dictionary<int, ChartPack> PacksById =
+            new Dictionary<int, ChartPack>();
 
         /// <summary>The song ids this run handed out.</summary>
         internal static readonly HashSet<ushort> CustomSongIds = new HashSet<ushort>();
@@ -119,9 +129,6 @@ namespace InFalsusChartLoader
 
         /// <summary>Which difficulty each song's illustrator entry currently shows.</summary>
         private static readonly Dictionary<ushort, int> IllustratorShown = new Dictionary<ushort, int>();
-
-        /// <summary>The pack's name in the pack list. The game shows this text.</summary>
-        internal const string PackName = "IFCL";
 
         /// <summary>
         /// The difficulty flags, in the order <c>chart[0..3]</c> is written: Minimal, Evolved,
@@ -186,31 +193,9 @@ namespace InFalsusChartLoader
             return true;
         }
 
-        /// <summary>The names the shipped songs already carry.</summary>
-        internal static HashSet<string> ShippedNames()
-        {
-            var names = new HashSet<string>(StringComparer.Ordinal);
-
-            if (!TryGetAssets(out IntPtr songData, out _)) return names;
-
-            IntPtr songs = Memory.Ptr(songData + SongDataAllSongs);
-            if (!Memory.LooksLikeObject(songs)) return names;
-
-            int count = Memory.I32(songs + Offsets.Runtime.ArrayLength) - ById.Count;
-            if (count < 0) count = 0;
-
-            for (int i = 0; i < count; i++)
-            {
-                IntPtr slot = songs + Offsets.Runtime.ArrayDataOffset + i * SongInfoSize;
-                string text = Memory.Text(Memory.Ptr(slot + SongInfoBaseName));
-                if (text != null) names.Add(text);
-            }
-
-            return names;
-        }
-
         /// <summary>Settles every song's name and refuses the ones the game already has.</summary>
-        internal static List<ChartInfo> SettleNames(List<ChartInfo> charts, IntPtr songData)        {
+        internal static List<ChartInfo> SettleNames(List<ChartInfo> charts, IntPtr songData)
+        {
             var admitted = new List<ChartInfo>(charts.Count);
 
             IntPtr songs = Memory.Ptr(songData + SongDataAllSongs);
@@ -258,286 +243,136 @@ namespace InFalsusChartLoader
             return admitted;
         }
 
-        /// <summary>Adds every chart folder to the song and pack tables.</summary>
-        internal static int Inject(IntPtr songData, IntPtr packData, List<ChartInfo> charts) =>
-            ReplaceCustoms(songData, packData, charts);
-
-        /// <summary>Rebuilds the custom tail of the song table in id order.</summary>
-        internal static int ReplaceCustoms(IntPtr songData, IntPtr packData, List<ChartInfo> charts)
+        /// <summary>Adds every pack and its songs to the game's song and pack tables.</summary>
+        internal static InjectionResult Inject(IntPtr songData, IntPtr packData, List<ChartPack> packs)
         {
+            var result = new InjectionResult();
+            if (packs == null || packs.Count == 0) return result;
+
+            CustomPackIds.Clear();
+            PacksById.Clear();
+            CustomSongIds.Clear();
+            ById.Clear();
+
             IntPtr oldSongs = Memory.Ptr(songData + SongDataAllSongs);
-            if (!Memory.LooksLikeObject(oldSongs)) { Diagnostics.Warn("SongData has no song array"); return 0; }
-
-            int oldCount = Memory.I32(oldSongs + Offsets.Runtime.ArrayLength);
-            if (oldCount <= 0) { Diagnostics.Warn("SongData has no songs to take a template from"); return 0; }
-
-            int shipped = oldCount - ById.Count;
-            if (shipped < 0) shipped = 0;
-
-            int newCount = shipped + charts.Count;
-            if (newCount <= 0) return 0;
-
-            IntPtr chartTemplate = FirstCharts(oldSongs, oldCount);
-            if (chartTemplate == IntPtr.Zero) return 0;
-
-            IntPtr titleTemplate = FirstReadings(oldSongs, oldCount);
-
-            IntPtr songIds = AllocateSongIds(packData, charts.Count);
-            if (songIds == IntPtr.Zero) return 0;
-
-            if (!GrowAvailability(songData, newCount)) return 0;
-
-            IntPtr songs = ResizeArray(oldSongs, newCount);
-            if (songs == IntPtr.Zero) return 0;
-
-            int stride = SongInfoSize;
-            long shippedBytes = (long)shipped * stride;
-            if (shippedBytes > 0)
+            if (!Memory.LooksLikeObject(oldSongs))
             {
-                Buffer.MemoryCopy((void*)(oldSongs + Offsets.Runtime.ArrayDataOffset),
-                                  (void*)(songs + Offsets.Runtime.ArrayDataOffset),
-                                  shippedBytes, shippedBytes);
+                Diagnostics.Warn("SongData has no song array");
+                return result;
             }
 
-            ChartCatalog.Reset();
-            JacketCatalog.BeginRebuild();
-
-            for (int i = 0; i < charts.Count; i++)
+            int oldCount = Memory.I32(oldSongs + Offsets.Runtime.ArrayLength);
+            if (oldCount <= 0)
             {
-                int id = shipped + i;
-                IntPtr slot = (IntPtr)((long)songs + Offsets.Runtime.ArrayDataOffset + (long)id * stride);
+                Diagnostics.Warn("SongData has no songs to take a template from");
+                return result;
+            }
 
-                Buffer.MemoryCopy((void*)(oldSongs + Offsets.Runtime.ArrayDataOffset), (void*)slot,
-                                  stride, stride);
+            IntPtr oldPacks = Memory.Ptr(packData + PackDataPacks);
+            if (!Memory.LooksLikeObject(oldPacks))
+            {
+                Diagnostics.Warn("PackData has no pack array");
+                return result;
+            }
 
-                Memory.WritePtr(slot + SongInfoTitleReading, BuildReadings(titleTemplate, charts[i].Name));
-                Memory.WritePtr(slot + SongInfoArtistReading, Str(charts[i].Composer));
+            int oldPackCount = Memory.I32(oldPacks + Offsets.Runtime.ArrayLength);
+            if (oldPackCount <= 0)
+            {
+                Diagnostics.Warn("the pack list is empty; there is no pack list to extend");
+                return result;
+            }
 
-                Memory.WriteU16(slot + SongInfoId, (ushort)id);
-                Memory.WritePtr(slot + SongInfoBaseName, Str(charts[i].BaseName));
+            int totalSongs = 0;
+            foreach (ChartPack pack in packs) totalSongs += pack.Charts.Count;
+            if (totalSongs == 0) return result;
 
-                Memory.WriteF32(slot + SongInfoPreviewStart, charts[i].PreviewStart);
-                Memory.WriteF32(slot + SongInfoPreviewEnd, charts[i].PreviewEnd);
+            int newCount = oldCount + totalSongs;
 
-                Memory.WriteI32(slot + SongInfoRewardStyle, RewardStyleSupress);
+            if (!GrowAvailability(songData, newCount)) return result;
 
-                IntPtr chartInfos = BuildCharts(chartTemplate, charts[i]);
-                Memory.WritePtr(slot + SongInfoCharts, chartInfos);
-                JacketCatalog.RegisterCharts(chartInfos, charts[i]);
+            IntPtr songs = GrowArray(oldSongs, newCount);
+            if (songs == IntPtr.Zero) return result;
 
-                Diagnostics.Info($"probe: rebuild slot={id} songId={Memory.U16(slot + SongInfoId)} " +
-                                 $"charts=0x{chartInfos.ToInt64():X} base='{charts[i].BaseName}'");
+            IntPtr chartTemplate = FirstCharts(oldSongs, oldCount);
+            if (chartTemplate == IntPtr.Zero) return result;
 
-                WriteSongId(songIds, i, (ushort)id);
+            IntPtr titleTemplate = FirstReadings(oldSongs, oldCount);
+            int packIdBase = NextPackId(oldPacks, oldPackCount);
+
+            var songIds = new IntPtr[packs.Count];
+            for (int i = 0; i < packs.Count; i++)
+            {
+                songIds[i] = AllocateSongIds(packData, packs[i].Charts.Count);
+                if (songIds[i] == IntPtr.Zero) return result;
+            }
+
+            int nextSong = oldCount;
+            for (int p = 0; p < packs.Count; p++)
+            {
+                ChartPack pack = packs[p];
+                int start = nextSong;
+
+                for (int i = 0; i < pack.Charts.Count; i++)
+                {
+                    ChartInfo info = pack.Charts[i];
+                    int id = nextSong;
+                    CustomSongIds.Add((ushort)id);
+                    ById[(ushort)id] = info;
+                    IntPtr slot = songs + Offsets.Runtime.ArrayDataOffset + nextSong * SongInfoSize;
+
+                    Buffer.MemoryCopy((void*)(oldSongs + Offsets.Runtime.ArrayDataOffset), (void*)slot,
+                                      SongInfoSize, SongInfoSize);
+
+                    Memory.WritePtr(slot + SongInfoTitleReading, BuildReadings(titleTemplate, info.Name));
+                    Memory.WritePtr(slot + SongInfoArtistReading, Str(info.Composer));
+
+                    Memory.WriteU16(slot + SongInfoId, (ushort)id);
+                    Memory.WritePtr(slot + SongInfoBaseName, Str(info.BaseName));
+
+                    Memory.WriteF32(slot + SongInfoPreviewStart, info.PreviewStart);
+                    Memory.WriteF32(slot + SongInfoPreviewEnd, info.PreviewEnd);
+
+                    Memory.WriteI32(slot + SongInfoRewardStyle, RewardStyleSupress);
+
+                    IntPtr chartInfos = BuildCharts(chartTemplate, info);
+                    Memory.WritePtr(slot + SongInfoCharts, chartInfos);
+                    JacketCatalog.RegisterCharts(chartInfos, info);
+                    nextSong++;
+                }
+
+                for (int i = 0; i < pack.Charts.Count; i++)
+                    WriteSongId(songIds[p], i, (ushort)(start + i));
+
+                int idForText = start;
+                foreach (ChartInfo info in pack.Charts)
+                {
+                    PackSetup.SetSongText(PackSetup.SongText.Title, idForText, info.Name);
+                    PackSetup.SetSongText(PackSetup.SongText.Artist, idForText, info.Composer);
+                    PackSetup.SetSongText(PackSetup.SongText.Illustrator, idForText,
+                                          IllustratorOf(info, 0));
+                    idForText++;
+                }
             }
 
             Memory.WritePtr(songData + SongDataAllSongs, songs);
 
-            CustomSongIds.Clear();
-            ById.Clear();
-            IllustratorShown.Clear();
-
-            for (int i = 0; i < charts.Count; i++)
+            IntPtr packsArray = AddPacks(oldPacks, oldPackCount, packs, songIds, packIdBase,
+                                         out int packsAdded, out int customAdded, out int legacyAdded);
+            if (packsArray == IntPtr.Zero)
             {
-                int id = shipped + i;
-                CustomSongIds.Add((ushort)id);
-                ById[(ushort)id] = charts[i];
-                ChartCatalog.Adopt(charts[i]);
+                Diagnostics.Warn("the custom packs could not be added to the pack table");
+                return result;
             }
 
-            if (charts.Count > 0)
-            {
-                if (CustomPackId < 0) AddPack(packData, songIds, charts.Count);
-                else SetPackSongs(packData, songIds);
-            }
-            else if (CustomPackId >= 0)
-            {
-                SetPackSongs(packData, songIds);
-            }
-
-            for (int i = 0; i < charts.Count; i++)
-            {
-                int id = shipped + i;
-                PackSetup.SetSongText(PackSetup.SongText.Title, id, charts[i].Name);
-                PackSetup.SetSongText(PackSetup.SongText.Artist, id, charts[i].Composer);
-                PackSetup.SetSongText(PackSetup.SongText.Illustrator, id, IllustratorOf(charts[i], 0));
-            }
+            Memory.WritePtr(packData + PackDataPacks, packsArray);
+            PackSetup.ApplyCategories(packData, packs);
+            result.SongsAdded = nextSong - oldCount;
+            result.PacksAdded = packsAdded;
+            result.CustomPacksAdded = customAdded;
+            result.LegacyPacksAdded = legacyAdded;
 
             Refresh(songData);
-            return charts.Count;
-        }
-
-        /// <summary>How many songs the live table holds, or -1.</summary>
-        internal static int AllSongCount()
-        {
-            if (!TryGetAssets(out IntPtr songData, out _)) return -1;
-
-            IntPtr songs = Memory.Ptr(songData + SongDataAllSongs);
-            return Memory.LooksLikeObject(songs) ? Memory.I32(songs + Offsets.Runtime.ArrayLength) : -1;
-        }
-
-        /// <summary>How many songs the rebuilt list holds, or -1.</summary>
-        internal static int SongListLength()
-        {
-            if (!TryGetAssets(out IntPtr songData, out _)) return -1;
-
-            int field = FieldResolver.Lookup("SongData", "_ffb");
-            if (field < 0) return -1;
-
-            IntPtr list = Memory.Ptr(songData + field);
-            return Memory.LooksLikeObject(list) ? Memory.I32(list + Offsets.Runtime.ArrayLength) : -1;
-        }
-
-        /// <summary>Replaces the custom pack's song list with the rebuilt one.</summary>
-        private static bool SetPackSongs(IntPtr packData, IntPtr songIds)
-        {
-            IntPtr packs = Memory.Ptr(packData + Offsets.PackData.Packs);
-            if (!Memory.LooksLikeObject(packs)) { Diagnostics.Warn("PackData has no pack array"); return false; }
-
-            int count = Memory.I32(packs + Offsets.Runtime.ArrayLength);
-            for (int i = 0; i < count; i++)
-            {
-                IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * PackInfoSize;
-                if (Memory.U16(pack + PackInfoId) != (ushort)CustomPackId) continue;
-
-                Memory.WritePtr(pack + PackInfoSongs, songIds);
-                return true;
-            }
-
-            Diagnostics.Error("the custom pack is no longer in the pack list; its song list was not updated");
-            return false;
-        }
-
-        /// <summary>The live song-id array of one pack, or zero when it is not in the live table.</summary>
-        internal static IntPtr LivePackSongs(ushort packId)
-        {
-            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return IntPtr.Zero;
-
-            IntPtr packs = Memory.Ptr(packData + Offsets.PackData.Packs);
-            if (!Memory.LooksLikeObject(packs)) return IntPtr.Zero;
-
-            int count = Memory.I32(packs + Offsets.Runtime.ArrayLength);
-            for (int i = 0; i < count; i++)
-            {
-                IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * PackInfoSize;
-                if (Memory.U16(pack + PackInfoId) != packId) continue;
-
-                return Memory.Ptr(pack + PackInfoSongs);
-            }
-
-            return IntPtr.Zero;
-        }
-
-        /// <summary>
-        /// How many songs one pack holds in the live table. False when the table or the pack cannot
-        /// be read, which is not the same statement as a pack that holds none.
-        /// </summary>
-        internal static bool LivePackSongCount(ushort packId, out int count)
-        {
-            count = 0;
-            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return false;
-
-            IntPtr packs = Memory.Ptr(packData + Offsets.PackData.Packs);
-            if (!Memory.LooksLikeObject(packs)) return false;
-
-            int rows = Memory.I32(packs + Offsets.Runtime.ArrayLength);
-            for (int i = 0; i < rows; i++)
-            {
-                IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * PackInfoSize;
-                if (Memory.U16(pack + PackInfoId) != packId) continue;
-
-                IntPtr songs = Memory.Ptr(pack + PackInfoSongs);
-                count = Memory.LooksLikeObject(songs) ? Memory.I32(songs + Offsets.Runtime.ArrayLength) : 0;
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>The live row index of one pack, or -1 when it is not in the table.</summary>
-        internal static int LivePackRow(ushort packId)
-        {
-            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return -1;
-
-            IntPtr packs = Memory.Ptr(packData + Offsets.PackData.Packs);
-            if (!Memory.LooksLikeObject(packs)) return -1;
-
-            int count = Memory.I32(packs + Offsets.Runtime.ArrayLength);
-            for (int i = 0; i < count; i++)
-            {
-                IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * PackInfoSize;
-                if (Memory.U16(pack + PackInfoId) == packId) return i;
-            }
-
-            return -1;
-        }
-
-        /// <summary>The pack id in one live row, or 0xFFFF when there is none.</summary>
-        internal static ushort LivePackIdAtRow(int row)
-        {
-            if (row < 0) return ushort.MaxValue;
-            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return ushort.MaxValue;
-
-            IntPtr packs = Memory.Ptr(packData + Offsets.PackData.Packs);
-            if (!Memory.LooksLikeObject(packs)) return ushort.MaxValue;
-
-            int count = Memory.I32(packs + Offsets.Runtime.ArrayLength);
-            if (row >= count) return ushort.MaxValue;
-
-            IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + row * PackInfoSize;
-            return Memory.U16(pack + PackInfoId);
-        }
-
-        /// <summary>Copies the live row of a pack over a saved copy of it.</summary>
-        internal static bool CopyPackTo(IntPtr destination, ushort packId)
-        {
-            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return false;
-            if (!Memory.LooksLikeObject(destination)) return false;
-
-            IntPtr packs = Memory.Ptr(packData + Offsets.PackData.Packs);
-            if (!Memory.LooksLikeObject(packs)) return false;
-
-            int count = Memory.I32(packs + Offsets.Runtime.ArrayLength);
-            for (int i = 0; i < count; i++)
-            {
-                IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * PackInfoSize;
-                if (Memory.U16(pack + PackInfoId) != packId) continue;
-
-                Buffer.MemoryCopy((void*)pack, (void*)destination, PackInfoSize, PackInfoSize);
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>Copies the live row of the scene's current pack over its saved copy.</summary>
-        internal static bool CopyPackToScene(IntPtr scene, int field)
-        {
-            if (!Memory.LooksLikeObject(scene) || field <= 0) return false;
-
-            ushort wanted = Memory.U16(scene + field + PackInfoId);
-            return CopyPackTo(scene + field, wanted);
-        }
-
-        /// <summary>An array of the same element type, resized, keeping the elements that fit.</summary>
-        private static IntPtr ResizeArray(IntPtr like, int count)
-        {
-            int oldCount = Memory.I32(like + Offsets.Runtime.ArrayLength);
-            IntPtr resized = NewArray(like, count);
-            if (resized == IntPtr.Zero) return IntPtr.Zero;
-
-            int stride = ElementStride(like, oldCount);
-            if (stride <= 0) return IntPtr.Zero;
-
-            int copy = oldCount < count ? oldCount : count;
-            long bytes = (long)copy * stride;
-            if (bytes > 0)
-            {
-                Buffer.MemoryCopy((void*)(like + Offsets.Runtime.ArrayDataOffset),
-                                  (void*)(resized + Offsets.Runtime.ArrayDataOffset), bytes, bytes);
-            }
-
-            return resized;
+            return result;
         }
 
         /// <summary>The illustrator to show for one difficulty.</summary>
@@ -657,120 +492,63 @@ namespace InFalsusChartLoader
             return array;
         }
 
-        /// <summary>Puts this mod's pack at the front of the pack list.</summary>
-        private static bool AddPack(IntPtr packData, IntPtr songIds, int songCount)
+        /// <summary>Inserts all custom packs before the game's shown packs.</summary>
+        private static IntPtr AddPacks(IntPtr oldPacks, int oldCount, List<ChartPack> packs,
+                                       IntPtr[] songIds, int packIdBase,
+                                       out int packsAdded, out int customAdded, out int legacyAdded)
         {
-            IntPtr oldPacks = Memory.Ptr(packData + PackDataPacks);
-            if (!Memory.LooksLikeObject(oldPacks)) { Diagnostics.Warn("PackData has no pack array"); return false; }
+            packsAdded = 0;
+            customAdded = 0;
+            legacyAdded = 0;
 
-            int oldCount = Memory.I32(oldPacks + Offsets.Runtime.ArrayLength);
-            if (oldCount <= CustomPackIndex)
-            {
-                Diagnostics.Warn($"the pack list has {oldCount} entries; there is no room before the first pack");
-                return false;
-            }
-
-            int packId = NextPackId(oldPacks, oldCount);
-
-            IntPtr packs = NewArray(oldPacks, oldCount + 1);
-            if (packs == IntPtr.Zero) return false;
+            int newCount = oldCount + packs.Count;
+            IntPtr grown = NewArray(oldPacks, newCount);
+            if (grown == IntPtr.Zero) return IntPtr.Zero;
 
             IntPtr source = oldPacks + Offsets.Runtime.ArrayDataOffset;
-            IntPtr data = packs + Offsets.Runtime.ArrayDataOffset;
+            IntPtr target = grown + Offsets.Runtime.ArrayDataOffset;
 
-            long head = (long)CustomPackIndex * PackInfoSize;
-            Buffer.MemoryCopy((void*)source, (void*)data, head, head);
+            int insert = InsertIndex(oldCount);
+            long head = (long)insert * PackInfoSize;
+            if (head > 0) Buffer.MemoryCopy((void*)source, (void*)target, head, head);
 
-            IntPtr mine = (IntPtr)(data.ToInt64() + head);
-            Memory.WriteU16(mine + PackInfoId, (ushort)packId);
-            Memory.WritePtr(mine + PackInfoSlug, Str("custom"));
-            Memory.WritePtr(mine + PackInfoSongs, songIds);
-
-            long rest = (long)(oldCount - CustomPackIndex) * PackInfoSize;
-            Buffer.MemoryCopy((void*)(source.ToInt64() + head), (void*)(mine.ToInt64() + PackInfoSize), rest, rest);
-
-            Memory.WritePtr(packData + PackDataPacks, packs);
-
-            CustomPackId = packId;
-            Diagnostics.Info($"pack '{PackName}' added with {songCount} songs at index {CustomPackIndex} " +
-                             $"(id {packId}), before the game's {oldCount - CustomPackIndex} shown packs");
-            return true;
-        }
-
-        /// <summary>
-        /// Puts the custom pack into the live table with no songs, so a pack select scene built
-        /// now has an entry for it; the entry is hidden while the table holds none.
-        /// </summary>
-        internal static bool SetupEmptyPack(IntPtr packData)
-        {
-            if (CustomPackId >= 0) return true;
-
-            IntPtr songIds = AllocateSongIds(packData, 0);
-            if (songIds == IntPtr.Zero) return false;
-
-            return AddPack(packData, songIds, 0);
-        }
-
-        /// <summary>Whether the custom pack is in the live table and holds no songs.</summary>
-        internal static bool EmptyPackListed()
-        {
-            if (CustomPackId < 0) return false;
-            return LivePackSongCount((ushort)CustomPackId, out int songs) && songs == 0;
-        }
-
-        /// <summary>
-        /// Takes the empty custom pack out of the live pack table for one build, so the game's own
-        /// pack screen is built without it; the returned table puts it back.
-        /// </summary>
-        internal static IntPtr HideEmptyPackForBuild()
-        {
-            if (CustomPackId < 0) return IntPtr.Zero;
-            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return IntPtr.Zero;
-            if (!LivePackSongCount((ushort)CustomPackId, out int songs) || songs > 0) return IntPtr.Zero;
-
-            IntPtr packs = Memory.Ptr(packData + PackDataPacks);
-            if (!Memory.LooksLikeObject(packs)) return IntPtr.Zero;
-
-            int count = Memory.I32(packs + Offsets.Runtime.ArrayLength);
-            int at = -1;
-            for (int i = 0; i < count; i++)
+            IntPtr cursor = (IntPtr)(target.ToInt64() + head);
+            for (int i = 0; i < packs.Count; i++)
             {
-                IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * PackInfoSize;
-                if (Memory.U16(pack + PackInfoId) == (ushort)CustomPackId)
-                {
-                    at = i;
-                    break;
-                }
+                ChartPack pack = packs[i];
+                int packId = packIdBase + i;
+
+                Memory.WriteU16(cursor + PackInfoId, (ushort)packId);
+                Memory.WritePtr(cursor + PackInfoSlug, Str(PackSlug(pack)));
+                Memory.WritePtr(cursor + PackInfoSongs, songIds[i]);
+
+                pack.GamePackId = packId;
+                pack.VisualRow = -1;
+                CustomPackIds.Add(packId);
+                PacksById[packId] = pack;
+
+                packsAdded++;
+                if (pack.IsLegacy) legacyAdded++;
+                else customAdded++;
+
+                Diagnostics.Info($"pack '{pack.LogicalId}' added at index {insert + i} " +
+                                 $"(id {packId}) with {pack.Charts.Count} songs");
+                cursor = (IntPtr)(cursor.ToInt64() + PackInfoSize);
             }
-            if (at < 0) return IntPtr.Zero;
 
-            IntPtr kept = NewArray(packs, count - 1);
-            if (kept == IntPtr.Zero) return IntPtr.Zero;
+            long rest = (long)(oldCount - insert) * PackInfoSize;
+            if (rest > 0)
+            {
+                Buffer.MemoryCopy((void*)(source.ToInt64() + head),
+                                  (void*)cursor.ToInt64(), rest, rest);
+            }
 
-            IntPtr source = packs + Offsets.Runtime.ArrayDataOffset;
-            IntPtr data = kept + Offsets.Runtime.ArrayDataOffset;
-            long head = (long)at * PackInfoSize;
-            long tail = (long)(count - at - 1) * PackInfoSize;
-
-            if (head > 0) Buffer.MemoryCopy((void*)source, (void*)data, head, head);
-            if (tail > 0)
-                Buffer.MemoryCopy((void*)(source.ToInt64() + head + PackInfoSize),
-                                  (void*)(data.ToInt64() + head), tail, tail);
-
-            Memory.WritePtr(packData + PackDataPacks, kept);
-            PackSetup.RefreshLookup(packData);
-            return packs;
+            return grown;
         }
 
-        /// <summary>Puts back the pack table a build was hidden from.</summary>
-        internal static void RestorePackTable(IntPtr table)
-        {
-            if (table == IntPtr.Zero) return;
-            if (!TryGetAssets(out IntPtr _, out IntPtr packData)) return;
-
-            Memory.WritePtr(packData + PackDataPacks, table);
-            PackSetup.RefreshLookup(packData);
-        }
+        /// <summary>The stable game slug for one pack.</summary>
+        private static string PackSlug(ChartPack pack) =>
+            pack.IsLegacy ? "IFCL" : "custom_" + pack.LogicalId;
 
         /// <summary>The first pack id the game is not using.</summary>
         private static int NextPackId(IntPtr packs, int count)

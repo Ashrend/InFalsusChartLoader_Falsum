@@ -3,7 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Text.Json;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Reads and vets one chart folder's <c>if</c> file.</summary>
     internal static class ChartInfoReader
@@ -45,10 +45,7 @@ namespace InFalsusChartLoader
             string ifPath = Path.Combine(folder, InfoFileName);
             if (!File.Exists(ifPath))
             {
-#if DEBUG
-                reason = $"no {InfoFileName} file";
-#endif
-                return false;
+                return FalsumReader.TryRead(folder, out info, out reason);
             }
 
             string text;

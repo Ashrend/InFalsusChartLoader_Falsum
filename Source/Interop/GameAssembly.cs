@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>The game's native module; its base address is reported by the probe.</summary>
     internal static class GameAssembly

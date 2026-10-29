@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>The custom jackets and the reference-to-material handshake.</summary>
     internal static class JacketCatalog
@@ -15,21 +15,6 @@ namespace InFalsusChartLoader
 
         /// <summary>The songs this mod built a jacket for.</summary>
         private static readonly HashSet<string> Imported = new HashSet<string>(StringComparer.Ordinal);
-
-        /// <summary>What each song asked for, so a removed one can drop its cache entries.</summary>
-        private static readonly Dictionary<string, ChartInfo> Folders =
-            new Dictionary<string, ChartInfo>(StringComparer.Ordinal);
-
-        /// <summary>Pictures a changed folder no longer points at.</summary>
-        private static readonly List<IntPtr> Retired = new List<IntPtr>();
-
-        /// <summary>Takes the pictures a changed folder left behind.</summary>
-        internal static List<IntPtr> DrainRetired()
-        {
-            var copy = new List<IntPtr>(Retired);
-            Retired.Clear();
-            return copy;
-        }
 
         /// <summary>The reference the game was just told to load, and its replacement material.</summary>
         private static IntPtr _armed;
@@ -55,59 +40,6 @@ namespace InFalsusChartLoader
         {
             if (info == null || !Memory.LooksLikeObject(charts)) return;
             ChartArrays.Add((charts, info));
-        }
-
-        /// <summary>Drops the per-array list before the rebuilt records are registered.</summary>
-        internal static void BeginRebuild() => ChartArrays.Clear();
-
-        /// <summary>Every material the surviving songs still point at.</summary>
-        internal static HashSet<IntPtr> LiveMaterials()
-        {
-            var live = new HashSet<IntPtr>();
-            foreach (KeyValuePair<string, IntPtr[]> pair in ByBase)
-                foreach (IntPtr material in pair.Value)
-                    if (material != IntPtr.Zero) live.Add(material);
-            return live;
-        }
-
-        /// <summary>Drops the songs that are no longer in the model, and answers what to release.</summary>
-        internal static List<IntPtr> Prune(ICollection<string> keep)
-        {
-            var dropped = new List<IntPtr>();
-
-            var live = new HashSet<IntPtr>();
-            foreach (KeyValuePair<string, IntPtr[]> pair in ByBase)
-            {
-                if (!keep.Contains(pair.Key)) continue;
-                foreach (IntPtr material in pair.Value)
-                    if (material != IntPtr.Zero) live.Add(material);
-            }
-
-            foreach (string name in new List<string>(Folders.Keys))
-            {
-                if (keep.Contains(name)) continue;
-
-                ChartInfo info = Folders[name];
-                foreach (string path in info.JacketPaths)
-                {
-                    if (UsedByAnother(path, name)) continue;
-
-                    IntPtr material = JacketFactory.Forget(path, "jacket");
-                    if (material != IntPtr.Zero && !live.Contains(material)) dropped.Add(material);
-                }
-
-                if (ByBase.TryGetValue(name, out IntPtr[] materials))
-                {
-                    foreach (IntPtr material in materials)
-                        if (material != IntPtr.Zero && !live.Contains(material)) dropped.Add(material);
-                    ByBase.Remove(name);
-                }
-
-                Imported.Remove(name);
-                Folders.Remove(name);
-            }
-
-            return dropped;
         }
 
         /// <summary>Finds the jacket material for a `_ZOA` argument.</summary>
@@ -177,38 +109,10 @@ namespace InFalsusChartLoader
             return only;
         }
 
-        /// <summary>Whether another song still asks for a jacket path.</summary>
-        private static bool UsedByAnother(string path, string baseName)
-        {
-            foreach (KeyValuePair<string, ChartInfo> pair in Folders)
-            {
-                if (string.Equals(pair.Key, baseName, StringComparison.Ordinal)) continue;
-                if (pair.Value.JacketPaths != null &&
-                    Array.IndexOf(pair.Value.JacketPaths, path) >= 0)
-                    return true;
-            }
-
-            return false;
-        }
-
         /// <summary>Builds and keeps the jackets for one folder.</summary>
         internal static bool Add(ChartInfo info, out string reason)
         {
             Imported.Add(info.BaseName);
-
-            if (Folders.TryGetValue(info.BaseName, out ChartInfo previous))
-            {
-                foreach (string path in previous.JacketPaths)
-                {
-                    if (Array.IndexOf(info.JacketPaths, path) >= 0) continue;
-                    if (UsedByAnother(path, info.BaseName)) continue;
-
-                    IntPtr material = JacketFactory.Forget(path, "jacket");
-                    if (material != IntPtr.Zero) Retired.Add(material);
-                }
-            }
-
-            Folders[info.BaseName] = info;
             reason = null;
 
             var materials = new IntPtr[ChartInfo.Difficulties];

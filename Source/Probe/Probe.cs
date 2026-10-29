@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Debug-only reporting for one run.</summary>
     internal static class Probe
@@ -135,8 +135,7 @@ namespace InFalsusChartLoader
             $"unlock={Hooks.UnlockFills}/{Hooks.UnlockHidden} " +
             $"apply={Hooks.ApplyCalls}/{Hooks.ApplyReloaded} " +
             $"diff={Selection.AppliedDifficulty} song={Selection.AppliedSong} " +
-            $"pack={Hooks.PackDifficultyCalls}/{Hooks.PackCardsRebuilt} pv={Hooks.PackVisualRebuilds} " +
-            $"ps={Hooks.PackSelectCalls}/{Hooks.PackViewSwaps} " +
+            $"pack={Hooks.PackDifficultyCalls}/{Hooks.PackCardsRebuilt} " +
             $"switch={Hooks.SceneSwitchCalls}@{Hooks.SceneSwitchLastState}" +
             (Hooks.WaitProgress() is string waiting ? $" wait={waiting}" : "") + " " +
             $"jackets={JacketCatalog.Asked}/{JacketCatalog.Claimed} " +
@@ -206,14 +205,39 @@ namespace InFalsusChartLoader
             IntPtr packs = ArrayAt(packData, "PackData", "PackInfo");
             int count = Length(packs);
             int stride = Stride(packs, count);
+            int external = FieldResolver.Lookup("PackInfo", "ExternalURL");
 
             for (int i = 0; i < count && i < 12; i++)
             {
                 IntPtr pack = packs + Offsets.Runtime.ArrayDataOffset + i * stride;
-                line($"pack[{i}]         id={Memory.U16(pack + Offsets.Pack.Id)} " +
+                int id = Memory.U16(pack + Offsets.Pack.Id);
+                string url = external < 0 ? "(no field)" : Memory.Text(Memory.Ptr(pack + external), 128);
+                line($"pack[{i}]         id={id} " +
                      $"slug='{Memory.Text(Memory.Ptr(pack + Offsets.Pack.Slug), 64)}' " +
-                     $"songs={Length(Memory.Ptr(pack + Offsets.Pack.Songs))}");
+                     $"songs={Length(Memory.Ptr(pack + Offsets.Pack.Songs))} " +
+                     $"url='{url}' flags={PackBool(packData, "_TkA", (ushort)id)}/" +
+                     $"{PackBool(packData, "_ukA", (ushort)id)}");
             }
+        }
+
+        /// <summary>The two boolean pack-data probes, for the pack-column investigation.</summary>
+        private static unsafe bool PackBool(IntPtr packData, string name, ushort id)
+        {
+            IntPtr klass = FieldResolver.ClassPointer("PackData");
+            if (klass == IntPtr.Zero) return false;
+
+            IntPtr method = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_method_from_name(klass, name, 1);
+            if (method == IntPtr.Zero) return false;
+
+            IntPtr* args = stackalloc IntPtr[1];
+            args[0] = (IntPtr)(&id);
+            IntPtr raised = IntPtr.Zero;
+            IntPtr result = Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(
+                method, packData, (void**)args, ref raised);
+            if (raised != IntPtr.Zero || result == IntPtr.Zero) return false;
+
+            IntPtr value = Il2CppInterop.Runtime.IL2CPP.il2cpp_object_unbox(result);
+            return Memory.U8(value) != 0;
         }
 
         private static void DumpPackVisuals(IntPtr packAssets)

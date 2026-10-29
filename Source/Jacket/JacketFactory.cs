@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Builds the materials a jacket or background is drawn with.</summary>
     internal static unsafe class JacketFactory
@@ -59,16 +59,19 @@ namespace InFalsusChartLoader
 
         private static IntPtr Require(string typeName, string assembly, string namespaze)
         {
-            IntPtr klass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(assembly, namespaze, typeName);
+            IntPtr klass = FieldResolver.ClassPointer(typeName);
+            if (klass != IntPtr.Zero) return klass;
+
+            klass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(assembly, namespaze, typeName);
             if (klass != IntPtr.Zero)
             {
                 Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_class_init(klass);
 
-                Diagnostics.Info($"{typeName} found by assembly");
+                Diagnostics.Info($"{typeName} found by assembly, not by the generated store");
                 return klass;
             }
 
-            Diagnostics.Error($"{typeName}: no class to ask in this build");
+            Diagnostics.Warn($"the game's {typeName} type could not be found, by store or by assembly");
             return IntPtr.Zero;
         }
 
@@ -87,57 +90,6 @@ namespace InFalsusChartLoader
             IntPtr material = BuildUncached(pngPath, what, out reason);
             if (material != IntPtr.Zero) Built[key] = material;
             return material;
-        }
-
-        /// <summary>Drops a cached build so the next request reads the file again.</summary>
-        internal static IntPtr Forget(string pngPath, string what)
-        {
-            string key = what + "\n" + pngPath;
-            if (!Built.TryGetValue(key, out IntPtr material)) return IntPtr.Zero;
-
-            Built.Remove(key);
-            return material;
-        }
-
-        /// <summary>Destroys a material this factory built, and the texture it owns; answers whether it did.</summary>
-        internal static bool Release(IntPtr material)
-        {
-            if (material == IntPtr.Zero) return false;
-            if (!Released.Add(material)) return false;
-
-            IntPtr texture = MainTexture(material, out _);
-            Destroy(material);
-            if (texture != IntPtr.Zero) Destroy(texture);
-            return true;
-        }
-
-        private static readonly HashSet<IntPtr> Released = new HashSet<IntPtr>();
-
-        /// <summary>Destroys one Unity object.</summary>
-        private static void Destroy(IntPtr instance)
-        {
-            try
-            {
-                IntPtr klass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(Assembly, Namespace, "Object");
-                if (klass == IntPtr.Zero) return;
-
-                Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_class_init(klass);
-
-                IntPtr method = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_method_from_name(klass, "Destroy", 1);
-                if (method == IntPtr.Zero) return;
-
-                IntPtr* args = stackalloc IntPtr[1];
-                args[0] = instance;
-
-                IntPtr raised = IntPtr.Zero;
-                Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(method, IntPtr.Zero, (void**)args, ref raised);
-                if (raised != IntPtr.Zero)
-                    Diagnostics.Warn($"an old picture could not be destroyed: {Raised.Text(raised)}");
-            }
-            catch (Exception e)
-            {
-                Diagnostics.Warn($"an old picture could not be destroyed: {Diagnostics.Describe(e)}");
-            }
         }
 
         /// <summary>Every successful build, by kind and path.</summary>
@@ -724,10 +676,6 @@ namespace InFalsusChartLoader
 
             return Memory.Ptr(instance + _cachedPtrOffset) == IntPtr.Zero;
         }
-
-        /// <summary>Whether a Unity object still has a native object behind it.</summary>
-        internal static bool IsAlive(IntPtr instance) =>
-            Memory.LooksLikeObject(instance) && !IsKnownToHaveNoNativeObject(instance);
 
         /// <summary>Where <c>UnityEngine.Object.m_CachedPtr</c> sits, or zero.</summary>
         private static int CachedPointerOffset()

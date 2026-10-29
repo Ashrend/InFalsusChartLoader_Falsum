@@ -1,11 +1,11 @@
 using MelonLoader;
 
-[assembly: MelonInfo(typeof(InFalsusChartLoader.ChartLoaderMod), "InFalsusChartLoader",
-                     InFalsusChartLoader.ModCore.Version, "MagicNeko",
-                     "https://github.com/Its-MagicNeko/InFalsusChartLoader/releases/latest")]
+[assembly: MelonInfo(typeof(InFalsusChartLoader_falsum.ChartLoaderMod), "InFalsusChartLoader_falsum",
+                     InFalsusChartLoader_falsum.ModCore.Version, "MagicNeko, Ashrend Fork",
+                     "https://github.com/Its-MagicNeko/InFalsusChartLoader_falsum/releases/latest")]
 [assembly: MelonGame("lowiro", "infalsus")]
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>MelonLoader's entry point; every callback hands over to <see cref="ModCore"/>.</summary>
     public class ChartLoaderMod : MelonMod

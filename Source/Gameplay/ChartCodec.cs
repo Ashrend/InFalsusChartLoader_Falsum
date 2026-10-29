@@ -1,6 +1,6 @@
 using System;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Decodes a chart with the game's own decoder.</summary>
     internal static unsafe class ChartCodec
@@ -85,6 +85,13 @@ namespace InFalsusChartLoader
                 *(IntPtr*)span = (IntPtr)data;
                 *(int*)(span + Offsets.Runtime.SpanLength) = bytes.Length;
                 _gab(tuple32, (IntPtr)span, name, IntPtr.Zero);
+            }
+
+            IntPtr decodedNotes = Memory.Ptr(tuple32 + Offsets.Runtime.ChartTupleNotes);
+            if (Memory.TryList(decodedNotes, out IntPtr decodedItems, out int decodedCount) &&
+                decodedCount > 0 && MeasureNoteSize(decodedItems, decodedCount))
+            {
+                ChartDecryptor.Overwrite(decodedItems, decodedCount, _noteSize, bytes, seed);
             }
 
             return Inspect(tuple32, seed, out reason);

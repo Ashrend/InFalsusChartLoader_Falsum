@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     /// <summary>Rewrites the stored result keys to this run's song ids.</summary>
     internal static unsafe class ResultKeys

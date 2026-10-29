@@ -2,33 +2,23 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace InFalsusChartLoader
+namespace InFalsusChartLoader_falsum
 {
     internal static unsafe partial class Hooks
     {
-        /// <summary>`PackVisualMemberLarge._Mf`, the cards of the pack on screen.</summary>
+        private const string PackImage = "Game.dll";
+        private const string PackNamespace = "ifapp.Game";
+
         private static int CardsField = Offsets.Unresolved;
-
-        /// <summary>`PackSongCardMember._if`, the song view model the card was built from.</summary>
         private static int CardViewModel = Offsets.Unresolved;
-
-        /// <summary>`PackVisualMemberLarge.dataAccess`.</summary>
         private static int PackDataAccess = Offsets.Unresolved;
-
-        /// <summary>`_SH._WEb`, the song record — embedded, so this is its address and not a pointer.</summary>
         private static int ViewModelSong = Offsets.Unresolved;
-
-        /// <summary>`SongSelectPackAssets.PackSelectLargeNonCompleted` — the large-card material slot.</summary>
         private static int RowLargeCard = Offsets.Unresolved;
-
-        /// <summary>`SongSelectPackAssets.PackSelectNonCompleted` — the small-card material slot.</summary>
         private static int RowSmallCard = Offsets.Unresolved;
-
+        private static int ViewModelDifficulty = Offsets.Unresolved;
         private static bool _fieldsResolved;
-
         private static bool _fieldsMissing;
 
-        /// <summary>Resolves the card and row fields.</summary>
         private static bool ResolveFields()
         {
             if (_fieldsResolved) return true;
@@ -56,34 +46,24 @@ namespace InFalsusChartLoader
             return true;
         }
 
-        /// <summary>`_SH._xEb`, the difficulty the card is showing.</summary>
-        private static int ViewModelDifficulty = Offsets.Unresolved;
-
-        /// <summary>The `_vc` delegate.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate void PackDifficultyFn(IntPtr self, byte difficulty, IntPtr methodInfo);
 
         private static NativeHook<PackDifficultyFn> _packDifficulty;
         private static PackDifficultyFn _packDifficultyTramp;
-
-        /// <summary>`PackSongCardMember._pc`'s code pointer, or null when it could not be reached.</summary>
         private static delegate* unmanaged[Cdecl]<IntPtr, IntPtr, IntPtr, IntPtr, void> _buildCard;
-
-        /// <summary>`_pc`'s `MethodInfo`.</summary>
         private static IntPtr _buildCardInfo;
 
-        /// <summary>Difficulty applies seen, cards rebuilt for one, and pack screens rebuilt after a reload.</summary>
-        internal static long PackDifficultyCalls, PackCardsRebuilt, PackVisualRebuilds;
+        internal static long PackDifficultyCalls, PackCardsRebuilt;
 
-        /// <summary>The shared accessor for `SongSelectPackAssets` rows.</summary>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate void PackRowFn(IntPtr table, IntPtr destination, uint index);
 
         private static NativeHook<PackRowFn> _packRow;
         private static PackRowFn _packRowTramp;
-
-        /// <summary>The row this mod's pack is answered with; -1 until it has been resolved.</summary>
         private static int _rowSource = -1;
+        private static int _rowSize = -1;
+        private static bool _rebuildReported;
 
         private static bool InstallPackRow()
         {
@@ -117,7 +97,6 @@ namespace InFalsusChartLoader
             return Landed(Hook.PackRow, target, prologue);
         }
 
-        /// <summary>Answers this mod's pack with the In Falsus row.</summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static void PackRowDetour(IntPtr table, IntPtr destination, uint index)
         {
@@ -125,12 +104,18 @@ namespace InFalsusChartLoader
             RowCalls++;
             long t0 = Now;
 #endif
-            if (SongCatalog.CustomPackId >= 0 && index == (uint)SongCatalog.CustomPackId)
+            if (SongCatalog.PacksById.TryGetValue((int)index, out ChartPack pack))
             {
-                if (_rowSource < 0) _rowSource = ResolveSourceRow();
-                if (_rowSource >= 0)
+                int row = pack.VisualRow;
+                if (row < 0)
                 {
-                    index = (uint)_rowSource;
+                    if (_rowSource < 0) _rowSource = ResolveSourceRow();
+                    row = _rowSource;
+                }
+
+                if (row >= 0)
+                {
+                    index = (uint)row;
 #if DEBUG
                     RowRedirects++;
 #endif
@@ -143,7 +128,6 @@ namespace InFalsusChartLoader
             _packRowTramp(table, destination, index);
         }
 
-        /// <summary>The row this mod's pack is answered with.</summary>
         private static int ResolveSourceRow()
         {
             if (!PackSetup.TryGetVisuals(out IntPtr canonical) || !Memory.LooksLikeObject(canonical))
@@ -158,7 +142,6 @@ namespace InFalsusChartLoader
             return row;
         }
 
-        /// <summary>The helper the game's row getter calls.</summary>
         private static IntPtr RowAccessor(ref int candidates)
         {
             IntPtr getter = MethodResolver.ByName("PackSelectSceneAssets", "_WnA");
@@ -193,26 +176,19 @@ namespace InFalsusChartLoader
             return bestCount > 1 && !tied ? best : IntPtr.Zero;
         }
 
-        /// <summary>`call rel32` — one opcode byte and four of displacement.</summary>
         private const int CallLength = 5;
-
-        /// <summary>How far into the getter calls are looked for.</summary>
         private const int CallWindow = 96;
 
-        /// <summary>Where an <c>E8</c> calls.</summary>
-        private static IntPtr Target(byte* call)
-        {
-            return (IntPtr)((long)(call + CallLength) + *(int*)(call + 1));
-        }
+        private static IntPtr Target(byte* call) =>
+            (IntPtr)((long)(call + CallLength) + *(int*)(call + 1));
 
-        /// <summary>Whether an address is in an executable section.</summary>
         private static bool Executable(IntPtr address)
         {
             byte* image = (byte*)GameAssembly.Base;
-            if (image == null || *(ushort*)image != 0x5A4D) return false;        // "MZ"
+            if (image == null || *(ushort*)image != 0x5A4D) return false;
 
             byte* pe = image + *(int*)(image + 0x3C);
-            if (*(uint*)pe != 0x00004550) return false;                         // "PE\0\0"
+            if (*(uint*)pe != 0x00004550) return false;
 
             int sections = *(ushort*)(pe + 6);
             byte* section = pe + 24 + *(ushort*)(pe + 20);
@@ -233,7 +209,6 @@ namespace InFalsusChartLoader
             return false;
         }
 
-        /// <summary>The size of one `SongSelectPackAssets` row.</summary>
         private static int RowSize()
         {
             if (_rowSize >= 0) return _rowSize;
@@ -244,21 +219,16 @@ namespace InFalsusChartLoader
             return _rowSize = size;
         }
 
-        /// <summary>`RowSize`'s answer, -1 until it has been asked.</summary>
-        private static int _rowSize = -1;
-
-        /// <summary>The first drawable shipped row after the head.</summary>
         internal static int SourceRow(IntPtr table, int count, int stride)
         {
             if (stride <= 0 || count <= 0) return -1;
 
             for (int i = 1; i < count; i++)
-                if (i != SongCatalog.CustomPackId && Drawable(table, count, stride, i)) return i;
+                if (!SongCatalog.CustomPackIds.Contains(i) && Drawable(table, count, stride, i)) return i;
 
             return -1;
         }
 
-        /// <summary>A row's size in bytes.</summary>
         private static int Stride(IntPtr table, int count)
         {
             if (!Memory.LooksLikeObject(table) || count <= 0) return 0;
@@ -273,7 +243,6 @@ namespace InFalsusChartLoader
             }
         }
 
-        /// <summary>Whether a row has a material the pack screen draws.</summary>
         private static bool Drawable(IntPtr table, int count, int stride, int id)
         {
             if (!ResolveFields()) return false;
@@ -285,7 +254,6 @@ namespace InFalsusChartLoader
                 || Memory.LooksLikeObject(Memory.Ptr(row + RowSmallCard));
         }
 
-        /// <summary>The row an id selects — `packToAssets[id]`, and row zero for an id past the end.</summary>
         private static IntPtr Row(IntPtr table, int count, int stride, int id)
         {
             if (stride <= 0 || count <= 0) return IntPtr.Zero;
@@ -298,7 +266,8 @@ namespace InFalsusChartLoader
         {
             bool row = InstallPackRow();
 
-            IntPtr info = MethodResolver.MethodInfoByRuntime("PackSongCardMember", "_pc");
+            IntPtr info = MethodResolver.MethodInfoByRuntime(
+                "PackSongCardMember", "_pc", PackImage, PackNamespace);
             if (info == IntPtr.Zero)
             {
                 Diagnostics.Warn("PackSongCardMember._pc could not be found; a difficulty change on the " +
@@ -310,7 +279,8 @@ namespace InFalsusChartLoader
                 _buildCard = (delegate* unmanaged[Cdecl]<IntPtr, IntPtr, IntPtr, IntPtr, void>)(*(IntPtr*)info);
             }
 
-            IntPtr target = MethodResolver.ByRuntime("PackVisualMemberLarge", "_vc");
+            IntPtr target = MethodResolver.ByRuntime(
+                "PackVisualMemberLarge", "_vc", PackImage, PackNamespace);
             if (target == IntPtr.Zero)
             {
                 Diagnostics.Warn("PackVisualMemberLarge._vc could not be found; the jackets on the pack " +
@@ -343,7 +313,6 @@ namespace InFalsusChartLoader
             _buildCardInfo = IntPtr.Zero;
         }
 
-        /// <summary>Records the difficulty and rebuilds cards that showed another.</summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static void PackDifficultyDetour(IntPtr self, byte difficulty, IntPtr methodInfo)
         {
@@ -383,7 +352,6 @@ namespace InFalsusChartLoader
             }
         }
 
-        /// <summary>Whether a card on screen showed another difficulty.</summary>
         private static bool CardsForAnotherDifficulty(IntPtr packVisual, byte difficulty)
         {
             if (!ResolveFields()) return false;
@@ -400,7 +368,6 @@ namespace InFalsusChartLoader
             return false;
         }
 
-        /// <summary>Rebuilds each of this mod's cards.</summary>
         private static void RebuildCards(IntPtr packVisual)
         {
             if (_buildCard == null) return;
@@ -429,7 +396,6 @@ namespace InFalsusChartLoader
             }
         }
 
-        /// <summary>One card of the list, when it is one of this mod's songs'.</summary>
         private static bool Ours(IntPtr items, int index, out IntPtr card, out IntPtr viewModel)
         {
             card = IntPtr.Zero;
@@ -446,7 +412,6 @@ namespace InFalsusChartLoader
             return JacketCatalog.IsOurs(viewModel + ViewModelSong);
         }
 
-        /// <summary>Says why the rebuild failed, once.</summary>
         [System.Diagnostics.Conditional("DEBUG")]
         private static void Reported(string why)
         {
@@ -454,7 +419,5 @@ namespace InFalsusChartLoader
             _rebuildReported = true;
             Diagnostics.Warn(why);
         }
-
-        private static bool _rebuildReported;
     }
 }
