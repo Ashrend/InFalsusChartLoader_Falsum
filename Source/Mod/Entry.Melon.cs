@@ -1,7 +1,7 @@
 using MelonLoader;
 
 [assembly: MelonInfo(typeof(InFalsusChartLoader_falsum.ChartLoaderMod), "InFalsusChartLoader_falsum",
-                     InFalsusChartLoader_falsum.ModCore.Version, "MagicNeko, Ashrend Fork",
+                     InFalsusChartLoader_falsum.ModCore.Version, "MagicNeko, (Ashrend_Fork)",
                      "https://github.com/Its-MagicNeko/InFalsusChartLoader_falsum/releases/latest")]
 [assembly: MelonGame("lowiro", "infalsus")]
 

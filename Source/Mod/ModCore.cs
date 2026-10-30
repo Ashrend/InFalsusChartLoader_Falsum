@@ -7,7 +7,7 @@ namespace InFalsusChartLoader_falsum
     internal static class ModCore
     {
         /// <summary>The mod's version, shared by both loader entries.</summary>
-        internal const string Version = "0.3.0";
+        internal const string Version = "0.3.2";
 
         /// <summary>The packs and songs waiting for the game's data to exist.</summary>
         private static List<ChartPack> _imported = new List<ChartPack>();
