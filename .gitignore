@@ -22,11 +22,3 @@ Managed/BepInEx/*
 !Managed/BepInEx/Il2CppInterop.Common.dll
 !Managed/BepInEx/Il2Cppmscorlib.dll
 !Managed/BepInEx/UnityEngine.CoreModule.dll
-
-# Local-only plans and agent instructions
-AGENTS.md
-Plan.md
-UPSTREAM_MERGE_PLAN.md
-InFalsusChartLoader_Falsum使用说明.md
-LICENSE
-docs/superpowers/
