@@ -5,7 +5,12 @@ using System.Text.Json;
 
 namespace InFalsusChartLoader_falsum
 {
-    /// <summary>Reads and vets one chart folder's <c>if</c> file.</summary>
+    // The `if` key rules below mirror IfOverlay.cs, which reads the same keys as a display overlay.
+    // Change both files together whenever the `if` schema changes.
+    /// <summary>
+    /// Reads one song folder: a <c>.falsum</c> when there is one, the <c>if</c> when it is the only
+    /// chart file, and the <c>if</c> as a display overlay when both exist.
+    /// </summary>
     internal static class ChartInfoReader
     {
         /// <summary>The audio containers this mod accepts.</summary>
@@ -36,16 +41,63 @@ namespace InFalsusChartLoader_falsum
                 return document.RootElement.Clone();
         }
 
-        /// <summary>Reads <paramref name="folder"/>'s <c>if</c> file.</summary>
+        /// <summary>
+        /// Reads <paramref name="folder"/>'s chart description: the <c>.falsum</c> when there is one,
+        /// the <c>if</c> when there is only an <c>if</c>, and the <c>if</c> overlay when both exist.
+        /// </summary>
         internal static bool TryRead(string folder, out ChartInfo info, out string reason)
         {
             info = null;
             reason = null;
 
             string ifPath = Path.Combine(folder, InfoFileName);
-            if (!File.Exists(ifPath))
+            bool hasIf = File.Exists(ifPath);
+            bool hasFalsum = FalsumReader.HasPackage(folder);
+
+            if (!hasIf)
             {
-                return FalsumReader.TryRead(folder, out info, out reason);
+                if (!FalsumReader.TryRead(folder, out info, out reason)) return false;
+
+                if (!info.HasJackets())
+                {
+#if DEBUG
+                    reason = "the song has no cover and no jacket to fall back to";
+#endif
+                    info = null;
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (hasFalsum)
+            {
+                if (FalsumReader.TryRead(folder, out info, out reason))
+                {
+                    if (!IfOverlay.TryRead(folder, out IfOverlay overlay, out reason))
+                    {
+                        info = null;
+                        return false;
+                    }
+
+                    overlay.Apply(info);
+                    if (!info.HasJackets())
+                    {
+#if DEBUG
+                        reason = "the song has no cover and no jacket to fall back to";
+#endif
+                        info = null;
+                        return false;
+                    }
+
+                    Diagnostics.Info(overlay.Any
+                        ? $"falsum '{info.FolderName}': if overlay applied"
+                        : $"falsum '{info.FolderName}': if has no display keys");
+                    return true;
+                }
+
+                Diagnostics.Warn($"falsum could not be read, using {InfoFileName} instead: {reason}");
+                reason = null;
             }
 
             string text;

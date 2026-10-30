@@ -96,3 +96,20 @@ Charts
           |-- temp.spc
           `-- untitled.spc
 ```
+
+## 与 .falsum 同目录时
+
+同一歌曲目录同时存在 `.falsum` 和 `if` 时，`.falsum` 提供谱面与音频；`if` 只覆盖展示字段：`name`、`composer`、`preview_seconds`、`illust`、`jacket`、`background`，并回填缺失的 `charter`/`lv`。`if` 中的 `id`、`song`、`chart` 会被忽略。没有曲绘的歌曲不会导入。
+
+`if` 可以只写需要覆盖的展示字段：
+
+```json
+{
+  "preview_seconds": ["0", "90"],   //只覆盖预览音频时间[开始,结束]，以秒计算
+  "jacket": "jkt.png"               //只覆盖曲绘
+}
+```
+
+注意：`if` 中的展示字段只要有一项无效（例如 `jacket` 指向的文件不存在），整首歌都会被跳过，不会回退到 `.falsum` 的展示值。
+
+另外：如果 `.falsum` 本身无法读取，读取器会退回把 `if` 当作完整谱面描述来解析，因此只写展示字段的 `if` 会因缺少必填字段而加载失败。

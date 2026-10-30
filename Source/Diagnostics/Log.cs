@@ -19,6 +19,10 @@ namespace InFalsusChartLoader_falsum
             internal static void Msg(string message) => Source.LogInfo(message);
             internal static void Error(string message) => Source.LogError(message);
             internal static void Warning(string message) => Source.LogWarning(message);
+#elif TESTS
+            internal static void Msg(string message) { }
+            internal static void Error(string message) { }
+            internal static void Warning(string message) { }
 #else
 #error Define MELONLOADER or BEPINEX.
 #endif

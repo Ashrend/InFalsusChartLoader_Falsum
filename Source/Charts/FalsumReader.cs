@@ -46,6 +46,20 @@ namespace InFalsusChartLoader_falsum
             return false;
         }
 
+        /// <summary>Whether <paramref name="folder"/> carries at least one <c>.falsum</c> package.</summary>
+        internal static bool HasPackage(string folder)
+        {
+            try
+            {
+                return Directory.GetFiles(folder, "*.falsum").Length > 0;
+            }
+            catch (Exception e)
+            {
+                Diagnostics.Warn("falsum folder could not be read: " + Diagnostics.Describe(e));
+                return false;
+            }
+        }
+
         private static bool TryReadPackage(string folder, string package, out ChartInfo info, out string reason)
         {
             info = null;

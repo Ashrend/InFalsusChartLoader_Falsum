@@ -58,5 +58,16 @@ namespace InFalsusChartLoader_falsum
 
         /// <summary>The name the game requests this song's charts under.</summary>
         internal string BaseName;
+
+        /// <summary>Whether all four jacket slots name a non-empty image path.</summary>
+        internal bool HasJackets()
+        {
+            if (JacketPaths == null || JacketPaths.Length < Difficulties) return false;
+
+            for (int i = 0; i < Difficulties; i++)
+                if (string.IsNullOrEmpty(JacketPaths[i])) return false;
+
+            return true;
+        }
     }
 }
