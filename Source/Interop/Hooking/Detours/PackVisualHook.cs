@@ -54,6 +54,20 @@ namespace InFalsusChartLoader_falsum
         private static delegate* unmanaged[Cdecl]<IntPtr, IntPtr, IntPtr, IntPtr, void> _buildCard;
         private static IntPtr _buildCardInfo;
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void SmallCardBindFn(IntPtr self, IntPtr dataAccess, IntPtr info, int index);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void ScrollLayoutFn(IntPtr self, IntPtr list, int arg);
+
+        private static NativeHook<SmallCardBindFn> _smallCardBind;
+        private static SmallCardBindFn _smallCardBindTramp;
+        private static NativeHook<ScrollLayoutFn> _scrollLayout;
+        private static ScrollLayoutFn _scrollLayoutTramp;
+        private static int _smallCardViewModel = Offsets.Unresolved;
+        private static int _smallCardIndex = Offsets.Unresolved;
+        private static bool _inScrollLayout;
+
         internal static long PackDifficultyCalls, PackCardsRebuilt;
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -297,7 +311,80 @@ namespace InFalsusChartLoader_falsum
             _packDifficulty.Attach();
             _packDifficultyTramp = _packDifficulty.Trampoline;
             Diagnostics.Info("PackVisualMemberLarge._vc hooked");
+            InstallCardBinding();
             return Landed(Hook.PackVisual, target, prologue) & row;
+        }
+
+        /// <summary>
+        /// The song/DLC column lays out at most three cards. With a fourth pack the card
+        /// positions overlap, so the layout's position-to-pack pass binds the third card to
+        /// the fourth pack (clicking it selects the wrong pack; the wheel is fine). Keep the
+        /// slot binding the rebuild pass made instead.
+        /// </summary>
+        private static bool InstallCardBinding()
+        {
+            _smallCardViewModel = FieldResolver.Field("PackVisualMemberSmall", "_Pf");
+            _smallCardIndex = FieldResolver.Field("PackVisualMemberSmall", "_qf");
+            if (_smallCardViewModel < 0 || _smallCardIndex < 0)
+            {
+                Diagnostics.Warn("PackVisualMemberSmall._Pf/_qf could not be read; a fourth song/DLC pack " +
+                                 "will bind the wrong pack name");
+                return false;
+            }
+
+            IntPtr bind = MethodResolver.ByRuntime("PackVisualMemberSmall", "_bC", PackImage, PackNamespace);
+            IntPtr layout = MethodResolver.ByRuntime("PackSelectScrollContainer", "_Yn", PackImage,
+                                                     "ifapp.Game.Scenes");
+            if (bind == IntPtr.Zero || layout == IntPtr.Zero)
+            {
+                Diagnostics.Warn("the pack card bind/layout methods could not be found; a fourth song/DLC " +
+                                 "pack will bind the wrong pack name");
+                return false;
+            }
+
+            _smallCardBind = new NativeHook<SmallCardBindFn>
+            {
+                Target = bind,
+                Detour = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, IntPtr, int, void>)&SmallCardBindDetour,
+            };
+            _smallCardBind.Attach();
+            _smallCardBindTramp = _smallCardBind.Trampoline;
+
+            _scrollLayout = new NativeHook<ScrollLayoutFn>
+            {
+                Target = layout,
+                Detour = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, int, void>)&ScrollLayoutDetour,
+            };
+            _scrollLayout.Attach();
+            _scrollLayoutTramp = _scrollLayout.Trampoline;
+
+            Diagnostics.Info("pack card slot binding hooked");
+            return true;
+        }
+
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+        private static void SmallCardBindDetour(IntPtr self, IntPtr dataAccess, IntPtr info, int index)
+        {
+            if (_inScrollLayout && info != IntPtr.Zero)
+            {
+                IntPtr current = Memory.Ptr(self + _smallCardViewModel);
+                if (current != IntPtr.Zero && current != info)
+                {
+                    _smallCardBindTramp(self, dataAccess, current, Memory.I32(self + _smallCardIndex));
+                    return;
+                }
+            }
+
+            _smallCardBindTramp(self, dataAccess, info, index);
+        }
+
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+        private static void ScrollLayoutDetour(IntPtr self, IntPtr list, int arg)
+        {
+            bool previous = _inScrollLayout;
+            _inScrollLayout = true;
+            _scrollLayoutTramp(self, list, arg);
+            _inScrollLayout = previous;
         }
 
         private static void DetachPackVisual()
@@ -311,6 +398,13 @@ namespace InFalsusChartLoader_falsum
             _packDifficultyTramp = null;
             _buildCard = null;
             _buildCardInfo = IntPtr.Zero;
+
+            _smallCardBind?.Detach();
+            _smallCardBind = null;
+            _smallCardBindTramp = null;
+            _scrollLayout?.Detach();
+            _scrollLayout = null;
+            _scrollLayoutTramp = null;
         }
 
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
