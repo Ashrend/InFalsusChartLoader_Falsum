@@ -31,6 +31,43 @@ namespace InFalsusChartLoader_falsum
                  (baseAddress == 0 ? "  <-- NOT FOUND; no hook can work" : ""));
         }
 
+        // ---------------------------------------------------------------- one-and-a-half: the tables
+
+        /// <summary>What the game's tables hold, and the arrays it derives from them.</summary>
+        internal static void Tables(IntPtr songData, IntPtr packData, string when)
+        {
+            if (songData == IntPtr.Zero || packData == IntPtr.Zero) return;
+
+            IntPtr songs = Memory.Ptr(songData + Offsets.SongData.AllSongs);
+            int count = Memory.LooksLikeObject(songs)
+                ? Memory.I32(songs + Offsets.Runtime.ArrayLength) : -1;
+
+            IntPtr packs = Memory.Ptr(packData + Offsets.PackData.Packs);
+            int packCount = Memory.LooksLikeObject(packs)
+                ? Memory.I32(packs + Offsets.Runtime.ArrayLength) : -1;
+
+            int derivedField = FieldResolver.Lookup("SongData", "_ffb");
+            IntPtr derived = derivedField < 0 ? IntPtr.Zero : Memory.Ptr(songData + derivedField);
+            int derivedCount = Memory.LooksLikeObject(derived)
+                ? Memory.I32(derived + Offsets.Runtime.ArrayLength) : -1;
+
+            int categoryField = FieldResolver.Lookup("PackData", "_FYA");
+            IntPtr category = categoryField < 0 ? IntPtr.Zero : Memory.Ptr(packData + categoryField);
+            int categoryCount = Memory.LooksLikeObject(category)
+                ? Memory.I32(category + Offsets.Runtime.HashSetCount) : -1;
+
+            line($"tables [{when}] allSongInfo={count} _ffb={derivedCount} packs={packCount} _FYA={categoryCount}");
+
+            for (int i = 0; Memory.LooksLikeObject(songs) && i < count; i++)
+            {
+                if (i < count - 14) continue;
+
+                IntPtr slot = songs + Offsets.Runtime.ArrayDataOffset + i * SongInfoSize;
+                string name = Memory.Text(Memory.Ptr(slot + SongInfoBaseName), 128);
+                line($"  song[{i}] id={Memory.U16(slot + SongInfoId)} '{name ?? "(none)"}'");
+            }
+        }
+
         // ---------------------------------------------------------------- two: what was imported
 
         /// <summary>What each folder decided, and what the ones that were kept produced.</summary>

@@ -481,6 +481,49 @@ namespace InFalsusChartLoader_falsum
             _ended = false;
         }
 
+        /// <summary>Stops the clip and forgets its material, so a replaced one is built again.</summary>
+        internal static void Reset()
+        {
+            Stop();
+
+            ReleaseHandle(ref _materialHandle);
+            ReleaseHandle(ref _textureHandle);
+            ReleaseHandle(ref _playerHandle);
+            ReleaseHandle(ref _objectHandle);
+
+            _material = IntPtr.Zero;
+            _texture = IntPtr.Zero;
+            _player = IntPtr.Zero;
+            _playing = null;
+            _armed = false;
+            _running = false;
+            _held = false;
+            _ended = false;
+            _heldClock = double.NaN;
+            _rewound = false;
+        }
+
+        /// <summary>Drops one of the handles this file keeps a Unity object alive with.</summary>
+        /// <remarks>
+        /// A reload replaces the material; keeping the handle would root the old one for the rest of the
+        /// session, and a lost handle can never be freed, so the leak would grow with every reload.
+        /// </remarks>
+        private static void ReleaseHandle(ref IntPtr handle)
+        {
+            if (handle == IntPtr.Zero) return;
+
+            try
+            {
+                Il2CppInterop.Runtime.IL2CPP.il2cpp_gchandle_free(handle);
+            }
+            catch (Exception)
+            {
+                // The runtime refusing to free it is not worth failing a reload over.
+            }
+
+            handle = IntPtr.Zero;
+        }
+
         /// <summary>Builds the object, player, texture and material, once.</summary>
         private static bool Ensure(out string reason)
         {

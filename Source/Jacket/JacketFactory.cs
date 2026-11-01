@@ -84,7 +84,7 @@ namespace InFalsusChartLoader_falsum
         {
             reason = null;
 
-            string key = what + "\n" + pngPath;
+            string key = Key(pngPath, what);
             if (Built.TryGetValue(key, out IntPtr known)) return known;
 
             IntPtr material = BuildUncached(pngPath, what, out reason);
@@ -92,7 +92,27 @@ namespace InFalsusChartLoader_falsum
             return material;
         }
 
-        /// <summary>Every successful build, by kind and path.</summary>
+        /// <summary>
+        /// The cache key for one picture: its path and the stamp of the file it was built from.
+        /// </summary>
+        /// <remarks>
+        /// The stamp is what lets a reload pick up a replaced picture without rebuilding, and therefore
+        /// leaking, every picture whose file did not change.
+        /// </remarks>
+        private static string Key(string pngPath, string what)
+        {
+            try
+            {
+                var file = new FileInfo(pngPath);
+                return what + "\n" + pngPath + "\n" + file.Length + "\n" + file.LastWriteTimeUtc.Ticks;
+            }
+            catch (Exception)
+            {
+                return what + "\n" + pngPath;
+            }
+        }
+
+        /// <summary>Every successful build, by kind, path and file stamp.</summary>
         private static readonly Dictionary<string, IntPtr> Built =
             new Dictionary<string, IntPtr>(StringComparer.Ordinal);
 

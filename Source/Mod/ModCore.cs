@@ -14,6 +14,10 @@ namespace InFalsusChartLoader_falsum
 
         private static bool _registered;
 
+        /// <summary>Marks the songs as registered, so the startup path stops trying.</summary>
+        /// <remarks>The reload registers on its own, and both paths must agree on who owns the tables.</remarks>
+        internal static void MarkRegistered() => _registered = true;
+
 #if DEBUG
         /// <summary>Frames seen, for the probe's timer.</summary>
         private static int _frames;
@@ -42,13 +46,16 @@ namespace InFalsusChartLoader_falsum
                 string root = ChartLibrary.Locate();
                 Diagnostics.Info($"charts folder: {root}");
 
-                _imported = ChartLibrary.Import(root, Validate);
+                _imported = ChartLibrary.Import(root, Validate) ?? new List<ChartPack>();
                 int importedSongs = CountSongs(_imported);
                 Diagnostics.Load($"packs: {_imported.Count} imported, songs: {importedSongs} imported");
 
-                bool worthHooking = importedSongs > 0;
-                if (worthHooking) Hooks.Install();
-                else Diagnostics.Info("no charts were imported, so no hooks are being installed");
+                // The folder is what the reload watches, and the hooks are what lets it fire: an empty
+                // Charts/ still has to install them, or a song dropped in later could never be seen.
+                Reload.Start(root);
+
+                if (!string.IsNullOrEmpty(root)) Hooks.Install();
+                else Diagnostics.Warn("there is no charts folder to watch, so no hooks are being installed");
 
 #if DEBUG
                 Probe.Startup(root, codecReady, assetsReady, Hooks.Installed, Hooks.Attempted);
@@ -79,95 +86,123 @@ namespace InFalsusChartLoader_falsum
                     return;
                 }
 
-#if DEBUG
-                PackSetup.TryGetVisuals(out IntPtr packAssetsForProbe);
-                Probe.Before(songData, packData, packAssetsForProbe);
-#endif
-
-                Diagnostics.Load(FieldResolver.Stats());
-
-                List<ChartInfo> named = SongCatalog.SettleNames(Flatten(_imported), songData);
-                if (named.Count == 0)
-                {
-                    _registered = true;
-                    Diagnostics.Error("no custom song could be registered");
-                    return;
-                }
-
-                KeepOnly(named);
-                if (_imported.Count == 0)
-                {
-                    _registered = true;
-                    Diagnostics.Error("no custom song could be registered");
-                    return;
-                }
-
-                List<ChartInfo> ready = RegisterAudio(Flatten(_imported));
-                if (ready.Count == 0)
-                {
-                    _registered = true;
-                    Diagnostics.Error("no custom song could have its audio registered");
-                    return;
-                }
-
-                KeepOnly(ready);
-                if (_imported.Count == 0)
-                {
-                    _registered = true;
-                    Diagnostics.Error("no custom song could have its audio registered");
-                    return;
-                }
-
-                InjectionResult injected = SongCatalog.Inject(songData, packData, _imported);
                 _registered = true;
-
-                if (injected.SongsAdded == 0)
-                {
-                    Diagnostics.Error("the custom songs could not be added to the game's song list");
-                    return;
-                }
-
-                if (injected.PacksAdded == 0)
-                {
-                    Diagnostics.Error("the custom pack could not be added; the custom songs are in the " +
-                                      "song list but have no pack of their own");
-                }
-                else
-                {
-                    if (PackSetup.TryGetVisuals(out IntPtr packAssets))
-                    {
-                        foreach (ChartPack pack in _imported)
-                        {
-                            if (!PackSetup.ExtendVisuals(packAssets, pack))
-                                Diagnostics.Warn($"pack '{pack.LogicalId}' visual row could not be prepared");
-                        }
-                    }
-                    else
-                    {
-                        Diagnostics.Warn("the pack visual table could not be reached");
-                    }
-
-                    PackSetup.RefreshLookup(packData);
-                    foreach (ChartPack pack in _imported)
-                        PackSetup.SetPackName(pack.GamePackId, pack.Names);
-                }
-
-                CustomResults.Prepare();
-
-#if DEBUG
-                PackSetup.TryGetVisuals(out IntPtr packAssetsAfter);
-                Probe.After(songData, packData, packAssetsAfter, ready);
-#endif
-
-                Diagnostics.Load($"packs: {injected.PacksAdded} registered " +
-                                 $"({injected.CustomPacksAdded} custom, {injected.LegacyPacksAdded} IFCL), " +
-                                 $"songs: {injected.SongsAdded} registered");
+                Register(songData, packData, _imported);
             }
             catch (Exception e)
             {
                 _registered = true;
                 Diagnostics.Error($"registering the custom songs failed: {Diagnostics.Describe(e)}");
             }
+        }
+
+        /// <summary>
+        /// Puts <paramref name="packs"/> into the game's tables and returns whether any song made it.
+        /// </summary>
+        /// <remarks>
+        /// Shared by the startup path and the reload path, so both go through the same registration.
+        /// The shipped tables are copied before the first injection; a reload restores them first.
+        /// </remarks>
+        internal static bool Register(IntPtr songData, IntPtr packData, List<ChartPack> packs)
+        {
+            _imported = packs ?? new List<ChartPack>();
+            if (_imported.Count == 0) return false;
+
+#if DEBUG
+            PackSetup.TryGetVisuals(out IntPtr packAssetsForProbe);
+            Probe.Before(songData, packData, packAssetsForProbe);
+#endif
+
+            Diagnostics.Load(FieldResolver.Stats());
+
+            List<ChartInfo> named = SongCatalog.SettleNames(Flatten(_imported), songData);
+            if (named.Count == 0)
+            {
+                Diagnostics.Error("no custom song could be registered");
+                return false;
+            }
+
+            KeepOnly(named);
+            if (_imported.Count == 0)
+            {
+                Diagnostics.Error("no custom song could be registered");
+                return false;
+            }
+
+            List<ChartInfo> ready = RegisterAudio(Flatten(_imported));
+            if (ready.Count == 0)
+            {
+                Diagnostics.Error("no custom song could have its audio registered");
+                return false;
+            }
+
+            KeepOnly(ready);
+            if (_imported.Count == 0)
+            {
+                Diagnostics.Error("no custom song could have its audio registered");
+                return false;
+            }
+
+            // Pictures are built here, not before name admission: two folders with the same id would
+            // otherwise let the refused one leave the admitted song wearing its artwork.
+            foreach (ChartInfo info in ready)
+            {
+                JacketCatalog.Add(info, out _);
+                BackgroundCatalog.Add(info, out _);
+            }
+
+            if (!SongCatalog.CaptureBaseline(songData, packData))
+            {
+                Diagnostics.Error("the game's tables could not be copied, so nothing was added: a reload " +
+                                  "would have no clean state to go back to");
+                return false;
+            }
+
+            InjectionResult injected = SongCatalog.Inject(songData, packData, _imported);
+
+            if (injected.SongsAdded == 0)
+            {
+                Diagnostics.Error("the custom songs could not be added to the game's song list");
+                return false;
+            }
+
+            if (injected.PacksAdded == 0)
+            {
+                Diagnostics.Error("the custom pack could not be added; the custom songs are in the " +
+                                  "song list but have no pack of their own");
+            }
+            else
+            {
+                if (PackSetup.TryGetVisuals(out IntPtr packAssets))
+                {
+                    foreach (ChartPack pack in _imported)
+                    {
+                        if (!PackSetup.ExtendVisuals(packAssets, pack))
+                            Diagnostics.Warn($"pack '{pack.LogicalId}' visual row could not be prepared");
+                    }
+                }
+                else
+                {
+                    Diagnostics.Warn("the pack visual table could not be reached");
+                }
+
+                PackSetup.RefreshLookup(packData);
+                foreach (ChartPack pack in _imported)
+                    PackSetup.SetPackName(pack.GamePackId, pack.Names);
+            }
+
+            CustomResults.Prepare();
+
+#if DEBUG
+            PackSetup.TryGetVisuals(out IntPtr packAssetsAfter);
+            Probe.After(songData, packData, packAssetsAfter, ready);
+#endif
+
+            Diagnostics.Load($"packs: {injected.PacksAdded} registered " +
+                             $"({injected.CustomPacksAdded} custom, {injected.LegacyPacksAdded} IFCL), " +
+                             $"songs: {injected.SongsAdded} registered");
+
+            return true;
         }
 
         /// <summary>All songs in pack order.</summary>
@@ -223,8 +258,12 @@ namespace InFalsusChartLoader_falsum
             return ready;
         }
 
-        /// <summary>Checks the charts a folder imports.</summary>
-        private static string Validate(ChartInfo info)
+        /// <summary>Checks the charts a folder imports, without touching any picture cache.</summary>
+        /// <remarks>
+        /// The reload calls this while it is still deciding: a folder that fails here never reaches the
+        /// commit, so nothing half-read is registered. Pictures are built by <see cref="Validate"/>.
+        /// </remarks>
+        internal static string ValidateChartsOnly(ChartInfo info)
         {
             byte[] scratch = new byte[32];
             for (int d = 0; d < ChartInfo.Difficulties; d++)
@@ -257,6 +296,15 @@ namespace InFalsusChartLoader_falsum
                     }
                 }
             }
+
+            return null;
+        }
+
+        /// <summary>Checks the charts a folder imports and registers its pictures.</summary>
+        internal static string Validate(ChartInfo info)
+        {
+            string reason = ValidateChartsOnly(info);
+            if (reason != null) return reason;
 
             if (!JacketCatalog.Add(info, out string jacketReason))
                 Diagnostics.Warn($"'{info.Name}' has no jacket of its own: {jacketReason}");

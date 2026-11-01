@@ -81,6 +81,7 @@ namespace InFalsusChartLoader_falsum.Tests
             OverlayTests();
             JacketTests();
             RoutingTests();
+            ReloadPlanTests();
 
             Environment.ExitCode = _failed == 0 ? 0 : 1;
         }
@@ -322,6 +323,71 @@ namespace InFalsusChartLoader_falsum.Tests
             using Stream stream = archive.CreateEntry(name).Open();
             using var writer = new StreamWriter(stream, new UTF8Encoding(false));
             writer.Write(text);
+        }
+
+        private static void ReloadPlanTests()
+        {
+            Check("relevant if", ReloadPlan.Relevant(Path.Combine("a", "if")));
+            Check("relevant pack", ReloadPlan.Relevant(Path.Combine("a", "pack")));
+            Check("relevant falsum", ReloadPlan.Relevant(Path.Combine("a", "x.falsum")));
+            Check("relevant spc", ReloadPlan.Relevant(Path.Combine("a", "x.spc")));
+            Check("relevant wav", ReloadPlan.Relevant(Path.Combine("a", "x.wav")));
+            Check("relevant png", ReloadPlan.Relevant(Path.Combine("a", "x.png")));
+            Check("relevant mp4", ReloadPlan.Relevant(Path.Combine("a", "x.mp4")));
+            Check("irrelevant txt", !ReloadPlan.Relevant(Path.Combine("a", "notes.txt")));
+            Check("irrelevant psd", !ReloadPlan.Relevant(Path.Combine("a", "cover.psd")));
+
+            string folder = TempFolder();
+            string Fp(string path) => ReloadPlan.TryFingerprint(path, out string text) ? text : null;
+            try
+            {
+                File.WriteAllText(Path.Combine(folder, "if"), "{}");
+                File.WriteAllBytes(Path.Combine(folder, "a.wav"), new byte[] { 1, 2, 3 });
+
+                string first = Fp(folder);
+                Check("fingerprint stable", first == Fp(folder), "changed with no edit");
+                Check("fingerprint non-empty", first.Length > 0);
+                Check("fingerprint refuses a missing folder",
+                      Fp(Path.Combine(folder, "gone")) == null);
+
+                File.WriteAllBytes(Path.Combine(folder, "a.wav"), new byte[] { 1, 2, 3, 4 });
+                string longer = Fp(folder);
+                Check("fingerprint sees a longer file", longer != first);
+
+                File.WriteAllText(Path.Combine(folder, "notes.txt"), "ignored");
+                Check("fingerprint ignores irrelevant", longer == Fp(folder), "notes.txt counted");
+
+                File.WriteAllBytes(Path.Combine(folder, "b.png"), new byte[] { 1 });
+                string picture = Fp(folder);
+                Check("fingerprint sees a new picture", picture != longer);
+
+                File.Delete(Path.Combine(folder, "b.png"));
+                Check("fingerprint sees a deleted file", Fp(folder) == longer);
+            }
+            finally
+            {
+                Directory.Delete(folder, true);
+            }
+
+            ReloadPlan.Compare(new List<string> { "a", "b" }, new List<string> { "a", "b" },
+                               out int added, out int removed);
+            Check("compare unchanged", added == 0 && removed == 0);
+
+            ReloadPlan.Compare(new List<string> { "a", "b" }, new List<string> { "a", "b", "c" },
+                               out added, out removed);
+            Check("compare added", added == 1 && removed == 0);
+
+            ReloadPlan.Compare(new List<string> { "a", "b" }, new List<string> { "a" },
+                               out added, out removed);
+            Check("compare removed", added == 0 && removed == 1);
+
+            ReloadPlan.Compare(new List<string> { "a", "b" }, new List<string> { "a", "c" },
+                               out added, out removed);
+            Check("compare swapped", added == 1 && removed == 1);
+
+            ReloadPlan.Compare(new List<string> { "a", "a" }, new List<string> { "a" },
+                               out added, out removed);
+            Check("compare treats names as a set", added == 0 && removed == 0);
         }
 
         private static string TempFolder()

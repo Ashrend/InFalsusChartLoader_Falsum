@@ -241,6 +241,32 @@ namespace InFalsusChartLoader_falsum
             }
         }
 
+        /// <summary>Takes a pack that no longer exists out of every table this mod fills.</summary>
+        /// <remarks>
+        /// A reload leaves the removed pack's id behind as an empty row. That row is inert on its own,
+        /// but its id would still sit in the category set, still count as owned, and still carry the
+        /// old name — which is enough for the pack column to draw a ghost card.
+        /// </remarks>
+        internal static void Forget(IntPtr packData, int packId)
+        {
+            int setField = FieldResolver.Lookup("PackData", "_FYA");
+            if (setField >= 0)
+            {
+                IntPtr set = Memory.Ptr(packData + setField);
+                if (Memory.LooksLikeObject(set)) SetMembership(set, (ushort)packId, false);
+            }
+
+            IntPtr klass = FieldResolver.ClassPointer("PackData");
+            IntPtr owned = klass == IntPtr.Zero
+                ? IntPtr.Zero
+                : Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_method_from_name(klass, "_UkA", 2);
+            if (owned != IntPtr.Zero) SetOwned(packData, owned, (ushort)packId, false);
+
+            if (!ResolveFields()) return;
+
+            SetTextValues(PackIdTypeMapping, packId, new string[PackManifest.Languages], TextWhat.PackName);
+        }
+
         /// <summary>Adds or removes one pack id in `PackData._FYA`.</summary>
         private static bool SetMembership(IntPtr set, ushort id, bool member)
         {
@@ -280,8 +306,7 @@ namespace InFalsusChartLoader_falsum
         }
 
         /// <summary>Rebuilds the game's song-to-pack lookup.</summary>
-        internal static void RefreshLookup(IntPtr packData)
-        {
+        internal static void RefreshLookup(IntPtr packData)        {
             IntPtr klass = FieldResolver.ClassPointer("PackData");
             if (klass == IntPtr.Zero) { Diagnostics.Warn("PackData could not be found; the pack lookup is stale"); return; }
 
@@ -298,6 +323,61 @@ namespace InFalsusChartLoader_falsum
                 Diagnostics.Warn($"the game's pack lookup rebuild raised: {Raised.Text(raised)}");
 
             Diagnostics.Info("pack lookup rebuilt");
+        }
+
+        /// <summary>
+        /// Puts the save's selected pack back on all songs when it is <paramref name="packId"/>.
+        /// </summary>
+        /// <remarks>
+        /// A reload can take a pack away while the save still points at it. Nothing in the song select
+        /// can draw a pack that no longer exists, so the selection has to move before the page opens.
+        /// </remarks>
+        internal static bool DeselectPackIfGone(int packId)
+        {
+            IntPtr klass = FieldResolver.ClassPointer("_NH");
+            if (klass == IntPtr.Zero) return false;
+
+            IntPtr statics = FieldResolver.Statics(klass);
+            if (statics == IntPtr.Zero) return false;
+
+            IntPtr save = Memory.Ptr(statics);
+            if (!Memory.LooksLikeObject(save)) return false;
+
+            IntPtr getter = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_method_from_name(klass, "_aoA", 0);
+            if (getter == IntPtr.Zero)
+            {
+                Diagnostics.Warn("the selected pack could not be read; a removed pack may stay selected");
+                return false;
+            }
+
+            IntPtr raised = IntPtr.Zero;
+            IntPtr boxed = Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(getter, save, null, ref raised);
+            if (raised != IntPtr.Zero || !Memory.LooksLikeObject(boxed)) return false;
+
+            if (Memory.U16(boxed + Offsets.Runtime.BoxedData) != (ushort)packId) return true;
+
+            IntPtr setter = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_method_from_name(klass, "_hoA", 1);
+            if (setter == IntPtr.Zero)
+            {
+                Diagnostics.Warn("the removed pack could not be deselected; the song select may open " +
+                                 "on a pack that is gone");
+                return false;
+            }
+
+            ushort none = ushort.MaxValue;
+            IntPtr* args = stackalloc IntPtr[1];
+            args[0] = (IntPtr)(&none);
+
+            raised = IntPtr.Zero;
+            Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(setter, save, (void**)args, ref raised);
+            if (raised != IntPtr.Zero)
+            {
+                Diagnostics.Warn("the removed pack could not be deselected: " + Raised.Text(raised));
+                return false;
+            }
+
+            Diagnostics.Info($"pack {packId} is gone; the save was put back on all songs");
+            return true;
         }
 
         /// <summary>`DynamicStringMapping.packIdTypeMapping`.</summary>
@@ -484,6 +564,57 @@ namespace InFalsusChartLoader_falsum
                               "build; the custom pack's texts will not be written");
             return _mappingOffset = -1;
         }
+
+#if DEBUG
+        /// <summary>The sizes of the id-keyed tables, for the reload probe.</summary>
+        /// <remarks>
+        /// These tables are only ever added to. A reload renumbers packs and songs, so an entry above
+        /// the current count is an id that no longer names anything — but the page can still draw it.
+        /// </remarks>
+        internal static string Counts()
+        {
+            if (!ResolveFields()) return "no pack fields";
+
+            int rows = -1;
+            if (TryGetVisuals(out IntPtr packAssets))
+            {
+                IntPtr table = Memory.Ptr(packAssets + PackAssetsTable);
+                rows = Memory.LooksLikeObject(table) ? Memory.I32(table + Offsets.Runtime.ArrayLength) : -1;
+            }
+
+            return $"rows={rows}" +
+                   $" packNames={TextCount(TextTable(PackIdTypeMapping))}" +
+                   $" titles={TextCount(TextTable(SongTitleTypeMapping))}" +
+                   $" artists={TextCount(TextTable(SongArtistTypeMapping))}" +
+                   $" illusts={TextCount(TextTable(SongIllustratorTypeMapping))}";
+        }
+
+        /// <summary>The dictionary one text mapping writes into, or zero.</summary>
+        private static IntPtr TextTable(int mappingField)
+        {
+            IntPtr klass = FieldResolver.ClassPointer("DataAccess");
+            if (klass == IntPtr.Zero) return IntPtr.Zero;
+
+            IntPtr statics = FieldResolver.Statics(klass);
+            if (statics == IntPtr.Zero) return IntPtr.Zero;
+
+            IntPtr mapping = Memory.Ptr(statics + StringMappingField);
+            if (!Memory.LooksLikeObject(mapping)) return IntPtr.Zero;
+
+            IntPtr typeMapping = Memory.Ptr(mapping + mappingField);
+            if (!Memory.LooksLikeObject(typeMapping)) return IntPtr.Zero;
+
+            int at = MappingOffset(typeMapping);
+            if (at < 0) return IntPtr.Zero;
+
+            IntPtr table = Memory.Ptr(typeMapping + at);
+            return Memory.LooksLikeObject(table) ? table : IntPtr.Zero;
+        }
+
+        /// <summary>How many entries one text table holds, or -1.</summary>
+        private static int TextCount(IntPtr table) =>
+            table == IntPtr.Zero ? -1 : Memory.I32(table + Offsets.Runtime.DictCount);
+#endif
 
         /// <summary>Writes one entry in the text table.</summary>
         private static unsafe bool Insert(IntPtr table, int packId, string[] names)

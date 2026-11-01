@@ -25,6 +25,19 @@ namespace InFalsusChartLoader_falsum
 
         internal static int Count => ByBase.Count;
 
+        /// <summary>Forgets every jacket and every chart array this session registered.</summary>
+        /// <remarks>
+        /// <see cref="ChartArrays"/> has to go too: it is searched first-match, so a stale array would
+        /// answer for a song that has been rebuilt, and it would grow without bound across reloads.
+        /// </remarks>
+        internal static void Reset()
+        {
+            ByBase.Clear();
+            Imported.Clear();
+            ChartArrays.Clear();
+            Disarm();
+        }
+
         /// <summary>Handshakes seen.</summary>
         internal static long Asked, Claimed;
 

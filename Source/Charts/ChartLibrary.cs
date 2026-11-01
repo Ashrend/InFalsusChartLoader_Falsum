@@ -98,7 +98,7 @@ namespace InFalsusChartLoader_falsum
             catch (Exception e)
             {
                 Diagnostics.Warn($"{root} could not be listed: {Diagnostics.Describe(e)}");
-                return imported;
+                return null;      // "cannot read" is not the same as "nothing is there"
             }
 
             ChartPack legacy = null;

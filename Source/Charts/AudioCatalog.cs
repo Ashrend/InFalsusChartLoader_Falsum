@@ -32,26 +32,59 @@ namespace InFalsusChartLoader_falsum
         internal static int BytesOf(string baseName) =>
             ByBase.TryGetValue(baseName, out Entry entry) ? entry.Audio.Length : -1;
 
-        /// <summary>Prepares a song's audio and assigns it an index.</summary>
-        internal static bool Add(string baseName, string path, out string reason)
+        /// <summary>Reads a song's audio without registering it with the game.</summary>
+        /// <remarks>
+        /// The reload needs the two halves apart: reading has no side effect and can be retried, while
+        /// registering asks the game's asset manager for a slot that cannot be given back.
+        /// </remarks>
+        internal static bool Prepare(string path, out AudioCodec.Prepared prepared, out string reason)
+        {
+            reason = null;
+            prepared = AudioCodec.Load(path, out reason);
+            return prepared != null;
+        }
+
+        /// <summary>Gives a prepared song its index and makes it answer for that name.</summary>
+        internal static bool Adopt(string baseName, AudioCodec.Prepared prepared, out string reason)
         {
             reason = null;
 
-            AudioCodec.Prepared audio = AudioCodec.Load(path, out reason);
-            if (audio == null) return false;
+            if (prepared == null)
+            {
+#if DEBUG
+                reason = "no prepared audio to register";
+#endif
+                return false;
+            }
 
-            int index = StreamingAssets.Add(audio.Length);
+            int index = StreamingAssets.Add(prepared.Length);
             if (index < 0)
             {
                 reason = "the game's asset manager would not take another file";
                 return false;
             }
 
-            var entry = new Entry { Index = index, Audio = audio };
+            var entry = new Entry { Index = index, Audio = prepared };
             ByBase[baseName] = entry;
             ByIndex[index] = entry;
-            Diagnostics.Info($"audio '{baseName}' -> index {index}, {audio.Length} bytes");
+            Diagnostics.Info($"audio '{baseName}' -> index {index}, {prepared.Length} bytes");
             return true;
+        }
+
+        /// <summary>Prepares a song's audio and assigns it an index.</summary>
+        internal static bool Add(string baseName, string path, out string reason)
+        {
+            if (!Prepare(path, out AudioCodec.Prepared prepared, out reason)) return false;
+
+            return Adopt(baseName, prepared, out reason);
+        }
+
+        /// <summary>Forgets every song's audio, so a reload registers the files on disk now.</summary>
+        /// <remarks>The indices already handed to the game's asset manager cannot be reclaimed.</remarks>
+        internal static void Reset()
+        {
+            ByBase.Clear();
+            ByIndex.Clear();
         }
 
         /// <summary>Resolves a custom song's audio name to its index.</summary>

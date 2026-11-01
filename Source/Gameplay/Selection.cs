@@ -174,8 +174,34 @@ namespace InFalsusChartLoader_falsum
             Memory.WriteU16(scene + SelectedSong, songId);
         }
 
+        /// <summary>Forgets what was selected, and the scene it was selected on.</summary>
+        internal static void Reset()
+        {
+            _applied = -1;
+            _appliedSong = 0;
+            Hooks.SongSelect = IntPtr.Zero;
+        }
+
         /// <summary>The song the last applied selection named. Reported by the probe.</summary>
         internal static int AppliedSong => _appliedSong;
+
+#if DEBUG
+        /// <summary>What the scene's static payload holds right now, for the reload probe.</summary>
+        /// <remarks>
+        /// The payload survives every scene instance, so a reload that renumbers songs leaves it
+        /// naming a slot that now holds a different song.
+        /// </remarks>
+        internal static string Describe()
+        {
+            IntPtr payload = Payload();
+            if (payload == IntPtr.Zero) return "no payload";
+
+            IntPtr song = payload + PayloadSong;
+            ushort id = Memory.U16(song + Offsets.Song.Id);
+            string name = Memory.Text(Memory.Ptr(song + Offsets.Song.BaseName), 128);
+            return $"id={id} '{name ?? "(none)"}' applied={_appliedSong}";
+        }
+#endif
 
         /// <summary>The difficulty it named, 0..3, or -1 before the first one. Reported by the probe.</summary>
         internal static int AppliedDifficulty => _applied;

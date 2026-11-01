@@ -25,6 +25,9 @@ namespace InFalsusChartLoader_falsum
 
         internal static int Count => ByBase.Count;
 
+        /// <summary>Forgets every background, so a reload does not keep a removed one.</summary>
+        internal static void Reset() => ByBase.Clear();
+
         /// <summary>Builds the stills for one chart folder.</summary>
         internal static bool Add(ChartInfo info, out string reason)
         {

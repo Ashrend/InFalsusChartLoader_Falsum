@@ -61,6 +61,8 @@ namespace InFalsusChartLoader_falsum
             Count(InstallAudioLoad());
             Count(InstallJacket());
             Count(InstallSongSelect());
+            Count(InstallSongSelectAwake());
+            Count(InstallPackSelectAwake());
             Count(InstallDifficultyState());
             Count(InstallPackVisual());
             Count(InstallCustomResults());
@@ -84,6 +86,8 @@ namespace InFalsusChartLoader_falsum
             DetachCustomResults();
             DetachPackVisual();
             DetachDifficultyState();
+            DetachSongSelectAwake();
+            DetachPackSelectAwake();
             DetachSongSelect();
             DetachJacket();
             DetachAudioLoad();
@@ -127,6 +131,8 @@ namespace InFalsusChartLoader_falsum
             MusicPause,
             MusicResume,
             SongSelectApply,
+            SongSelectAwake,
+            PackSelectAwake,
             DifficultyState,
             PackVisual,
             PackRow,
@@ -159,7 +165,7 @@ namespace InFalsusChartLoader_falsum
         }
 
 #if DEBUG
-        /// <summary>The hooks by name, for the log. Debug only — see <see cref="Hook"/>.</summary>
+        /// <summary>The hooks by name, for the log. Debug only —see <see cref="Hook"/>.</summary>
         private static string Name(Hook hook) => hook switch
         {
             Hook.ChartLoader => "_s._VA",
@@ -174,6 +180,8 @@ namespace InFalsusChartLoader_falsum
             Hook.MusicPause => "_Dg._hiA",
             Hook.MusicResume => "_Dg._KiA",
             Hook.SongSelectApply => "SongSelectScene._MN",
+            Hook.SongSelectAwake => "SongSelectScene.Awake",
+            Hook.PackSelectAwake => "PackSelectScene.Awake",
             Hook.DifficultyState => "_NH._UoA",
             Hook.PackVisual => "PackVisualMemberLarge._vc",
             Hook.PackRow => "the pack row accessor (SongSelectPackAssets[])",
