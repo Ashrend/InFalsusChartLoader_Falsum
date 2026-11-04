@@ -399,6 +399,8 @@ namespace InFalsusChartLoader_falsum.Tests
         {
             Check("commit before anything was committed",
                   ReloadPlan.ShouldCommit(false, null, "abc"));
+            Check("the first commit happens even when nothing looks changed",
+                  ReloadPlan.ShouldCommit(false, "abc", "abc"));
             Check("commit when the folder changed",
                   ReloadPlan.ShouldCommit(true, "abc", "def"));
             Check("no commit when nothing changed",
