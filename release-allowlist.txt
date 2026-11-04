@@ -5,3 +5,4 @@ the custom songs could not be registered; the charts folder will be read again o
 the game's tables could not be copied, so nothing was added: a reload would have no clean state to go back to
 the game's tables could not be restored, so the charts were left alone; the next visit to the song select tries again
 PackSelectScene
+addresses.v1

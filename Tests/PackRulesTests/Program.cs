@@ -85,6 +85,7 @@ namespace InFalsusChartLoader_falsum.Tests
             ReloadPlanTests();
             CacheTests();
             ImageTests();
+            CacheIdleTests();
 
             Environment.ExitCode = _failed == 0 ? 0 : 1;
         }
@@ -505,6 +506,23 @@ namespace InFalsusChartLoader_falsum.Tests
 
             // Not a PE image at all: the first word is not 'MZ'.
             Check("a non-PE address has no size", GameAssembly.ImageSizeAt(new IntPtr(0x1000)) == 0);
+        }
+
+        private static void CacheIdleTests()
+        {
+            // Without the game module there is no image to record an address against, so the
+            // cache must stay inert: it asks the caller and never writes anything.
+            int asked = 0;
+            IntPtr resolved = AddressCache.Code("test:inert", "test:inert", 3, () => { asked++; return new IntPtr(0x1234); });
+            Check("the cache asks when there is no module", resolved == new IntPtr(0x1234));
+            Check("the cache asked exactly once", asked == 1);
+
+            // A target that cannot be resolved is not asked again: each attempt costs seconds.
+            int retried = 0;
+            IntPtr failed = AddressCache.Code("test:unresolved", "test:unresolved", 3, () => { retried++; return IntPtr.Zero; });
+            Check("an unresolved target is zero", failed == IntPtr.Zero);
+            AddressCache.Code("test:unresolved", "test:unresolved", 3, () => { retried++; return IntPtr.Zero; });
+            Check("an unresolved target is not asked again", retried == 1);
         }
 
         private static string TempFolder()
