@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
-using System.Runtime.InteropServices;
 using System.Text;
 
 namespace InFalsusChartLoader_falsum.Tests
@@ -484,20 +483,24 @@ namespace InFalsusChartLoader_falsum.Tests
                   }).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 1);
         }
 
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-        private static extern IntPtr GetModuleHandleW(string moduleName);
-
         private static void ImageTests()
         {
             // The running program's own module is a real PE image, so the offset arithmetic
             // can be checked against something real.
-            IntPtr own = GetModuleHandleW(null);
-            Check("the running program has a module", own != IntPtr.Zero);
+            ProcessModule own = Process.GetCurrentProcess().MainModule;
+            Check("the running program has a module", own != null && own.BaseAddress != IntPtr.Zero);
 
-            long size = GameAssembly.ImageSizeAt(own);
+            long size = GameAssembly.ImageSizeAt(own.BaseAddress);
             Check("the image size is a sane number", size > 0 && size < 0x80000000);
+
+            // The loader's own view of how much memory it gave the module is an independent
+            // oracle, and the assertion has to be exact: a bound would still pass for an
+            // offset that is off by a few bytes, and this number is the filter that decides
+            // which addresses the cache may record.
+            Check("the image size is the loader's size", size == (long)own.ModuleMemorySize);
+
             Check("the image size covers the file on disk",
-                  size >= new FileInfo(Process.GetCurrentProcess().MainModule.FileName).Length);
+                  size >= new FileInfo(own.FileName).Length);
             Check("a null image has no size", GameAssembly.ImageSizeAt(IntPtr.Zero) == 0);
 
             // Not a PE image at all: the first word is not 'MZ'.
