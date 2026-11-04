@@ -3,17 +3,17 @@ using System.Collections.Generic;
 
 namespace InFalsusChartLoader_falsum
 {
-    /// <summary>Watches <c>Charts/</c> and rebuilds the custom songs when the folder changed.</summary>
+    /// <summary>Writes the custom songs into the game's tables, when the folder changed.</summary>
     /// <remarks>
-    /// The reload is two phases. Nothing is written to the game's tables until every folder has been
-    /// read and checked, so a bad zip leaves the previous songs alone. The commit then restores the
-    /// shipped tables, drops every cache this mod keeps, and registers afresh.
+    /// This is the one place the tables are written. It is entered from the
+    /// <c>SongSelectScene.Awake</c> and <c>PackSelectScene.Awake</c> detours, through
+    /// <see cref="Hooks"/>' shared <c>Apply</c>. Both run while a page is being built and before
+    /// it reads the tables, which is the only safe moment: anything later — a timer, the frame
+    /// loop, a scene switch — could land in the middle of a running song. Whichever wakes first
+    /// does the work; the other is a fingerprint no-op.
     /// <para>
-    /// It is entered from the <c>SongSelectScene.Awake</c> and <c>PackSelectScene.Awake</c> detours,
-    /// through <see cref="Hooks"/>' shared <c>Apply</c>. Both run while a page is being built and before
-    /// it reads the tables, which is the only safe moment: anything later — a timer, the frame loop, a
-    /// scene switch — could land in the middle of a running song. Whichever wakes first does the work;
-    /// the other is a fingerprint no-op.
+    /// The first visit writes everything: the startup path deliberately imports nothing,
+    /// so until this runs there are no custom songs in the game's tables.
     /// </para>
     /// </remarks>
     internal static class Reload
@@ -24,18 +24,25 @@ namespace InFalsusChartLoader_falsum
         /// <summary>The fingerprint of the folder as it was last applied.</summary>
         private static string _fingerprint;
 
+        /// <summary>Whether the tables have been written at least once this session.</summary>
+        private static bool _committed;
+
+        /// <summary>Whether the next commit is the first one.</summary>
+        private static bool _first = true;
+
         /// <summary>Set while a reload is running, so a second one cannot start inside it.</summary>
         private static bool _busy;
 
-        /// <summary>Starts watching the folder the initial import used.</summary>
+        /// <summary>Starts watching the folder the songs will come from.</summary>
         internal static void Start(string root)
         {
             _root = root;
-            ReloadPlan.TryFingerprint(root, out _fingerprint);
+            _fingerprint = null;      // nothing has been written yet
+            _committed = false;
         }
 
-        /// <summary>Rebuilds the songs when the folder changed since it was last applied.</summary>
-        internal static void IfChanged()
+        /// <summary>Writes the custom songs into the game's tables, if they are not there already.</summary>
+        internal static void Commit()
         {
             if (string.IsNullOrEmpty(_root) || _busy || Hooks.Faulted) return;
 
@@ -52,9 +59,9 @@ namespace InFalsusChartLoader_falsum
                 Diagnostics.Info($"text tables [{PackSetup.Counts()}]");
 #endif
 
-                if (now == _fingerprint) return;
+                if (!ReloadPlan.ShouldCommit(_committed, _fingerprint, now)) return;
 
-                if (!SongCatalog.TryGetAssets(out IntPtr songData, out IntPtr packData)) return;
+                if (!TryGetTables(out IntPtr songData, out IntPtr packData)) return;
 
                 var before = new List<string>(SongCatalog.ById.Count);
                 foreach (KeyValuePair<ushort, ChartInfo> slot in SongCatalog.ById)
@@ -153,7 +160,11 @@ namespace InFalsusChartLoader_falsum
                 int updated = after.Count - added;
 
                 _fingerprint = now;
-                Diagnostics.Load($"charts reloaded: +{added} ~{updated} -{removed}");
+                _committed = true;
+                Diagnostics.Load(_first
+                    ? $"charts loaded: {added} song(s)"
+                    : $"charts reloaded: +{added} ~{updated} -{removed}");
+                _first = false;
             }
             catch (Exception e)
             {
@@ -173,6 +184,29 @@ namespace InFalsusChartLoader_falsum
             {
                 _busy = false;
             }
+        }
+
+        /// <summary>The game's song and pack tables, waiting a little for them if need be.</summary>
+        /// <remarks>
+        /// The tables exist long before the song select opens, so the wait normally ends
+        /// immediately. It is here so that a first visit that arrives very early still works
+        /// instead of silently showing nothing.
+        /// </remarks>
+        private static bool TryGetTables(out IntPtr songData, out IntPtr packData)
+        {
+            for (int attempt = 0; attempt < 200; attempt++)
+            {
+                if (SongCatalog.TryGetAssets(out songData, out packData)) return true;
+                if (SongCatalog.Unusable) return false;      // the game will never have them
+
+                System.Threading.Thread.Sleep(10);
+            }
+
+            songData = IntPtr.Zero;
+            packData = IntPtr.Zero;
+            Diagnostics.Error("the game's song and pack tables did not appear; the custom songs " +
+                              "were not written");
+            return false;
         }
     }
 }

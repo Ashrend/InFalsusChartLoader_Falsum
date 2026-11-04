@@ -106,7 +106,7 @@ namespace InFalsusChartLoader_falsum
 
             try
             {
-                Reload.IfChanged();
+                Reload.Commit();
             }
             catch (Exception e)
             {
