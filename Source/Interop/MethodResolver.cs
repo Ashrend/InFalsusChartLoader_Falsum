@@ -28,8 +28,11 @@ namespace InFalsusChartLoader_falsum
 
         /// <summary>How many parameters a method takes, or zero when it cannot be told.</summary>
         /// <remarks>
-        /// Plain reflection over the generated interop types: it never touches IL2CPP, and the
-        /// count is only written beside the record — the cache never resolves by it.
+        /// Plain reflection over the generated interop types: it never touches IL2CPP. The count is
+        /// written beside the record and checked when one is restored, never used to select a
+        /// method. It may name a different overload than <see cref="MethodInfoOf"/> picks, but the
+        /// check compares two <c>ArityOf</c> answers, so it is self-consistent and never rejects a
+        /// record it wrote itself.
         /// </remarks>
         private static int ArityOf(string typeName, string methodName)
         {

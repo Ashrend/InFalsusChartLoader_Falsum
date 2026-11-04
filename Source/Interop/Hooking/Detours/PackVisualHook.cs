@@ -288,9 +288,9 @@ namespace InFalsusChartLoader_falsum
             // Forgotten before the lookup, not after it: if this call is ever changed to
             // ByRuntime, the very first run must already be blocked - a guard below the call
             // would let that run cache a code pointer where _buildCard needs a MethodInfo.
-            // The id names the image's value, not the PackImage constant, because that is what
-            // ByRuntime builds its ids from.
-            AddressCache.Forget("r:PackSongCardMember._pc@Game.dll");
+            // The id is built exactly the way ByRuntime builds its ids, from the image value, so
+            // the guard keeps pointing at the same key even if PackImage is ever changed.
+            AddressCache.Forget("r:PackSongCardMember._pc@" + PackImage);
 
             IntPtr info = MethodResolver.MethodInfoByRuntime(
                 "PackSongCardMember", "_pc", PackImage, PackNamespace);

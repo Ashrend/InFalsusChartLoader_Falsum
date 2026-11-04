@@ -57,8 +57,15 @@ namespace InFalsusChartLoader_falsum
 
         /// <summary>A target's code pointer: from the cache when it is still good, else by resolving it.</summary>
         /// <param name="id">The target's name in the cache; it must tell one target from another.</param>
-        /// <param name="identity">What the target was resolved from, so another route cannot reuse it.</param>
-        /// <param name="arity">How many parameters the method takes.</param>
+        /// <param name="identity">
+        /// The lookup key repeated: for the name-based routes everything the caller knows before
+        /// the lookup - the route, type, method and image - is already in the id, so the record
+        /// keeps the same string rather than a second one to compare it with.
+        /// </param>
+        /// <param name="arity">
+        /// How many parameters the method takes, or zero when the caller cannot tell before the
+        /// lookup; a known count is checked against the record before it is restored.
+        /// </param>
         /// <param name="resolve">The slow way to the address, used when the cache cannot answer.</param>
         internal static IntPtr Code(string id, string identity, int arity, Func<IntPtr> resolve)
         {
@@ -70,7 +77,7 @@ namespace InFalsusChartLoader_falsum
 
             if (_enabled && Records.TryGetValue(id, out AddressEntry record) && record.Identity == identity)
             {
-                IntPtr restored = Restore(record);
+                IntPtr restored = Restore(record, arity);
                 if (restored != IntPtr.Zero) return restored;
             }
 
@@ -209,10 +216,16 @@ namespace InFalsusChartLoader_falsum
 
         /// <summary>The address a record points at, when it still points at the same code.</summary>
         /// <param name="record">The record read from the file.</param>
+        /// <param name="arity">The parameter count the caller knows before the lookup, or zero.</param>
         /// <returns>The address, or zero when the record cannot be trusted any more.</returns>
-        private static IntPtr Restore(AddressEntry record)
+        private static IntPtr Restore(AddressEntry record, int arity)
         {
             if (!AddressCacheEntries.InsideImage(record.Rva, GameAssembly.SizeOfImage)) return IntPtr.Zero;
+
+            // The arity is a cheap consistency check, not a selector: it is what the caller could
+            // work out before asking, which is nothing at all for the runtime route. A record whose
+            // arity disagrees was made for a different shape of the same name.
+            if (arity > 0 && record.Arity != arity) return IntPtr.Zero;
 
             IntPtr target = new IntPtr(GameAssembly.Base.ToInt64() + record.Rva);
             byte[] actual = Prologue(target);

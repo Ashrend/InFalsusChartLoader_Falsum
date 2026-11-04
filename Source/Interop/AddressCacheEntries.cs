@@ -12,13 +12,22 @@ namespace InFalsusChartLoader_falsum
     /// </remarks>
     internal sealed class AddressEntry
     {
-        /// <summary>The lookup key: the method's name and its arity, in one string.</summary>
+        /// <summary>
+        /// The caller's lookup key: what identifies the target, written by the caller. It carries
+        /// the route (<c>m:</c>, <c>r:</c>, <c>c:</c>), and the image where there is one; the
+        /// parameter count appears only on the <c>c:</c> keys, where the caller chooses the
+        /// method by it.
+        /// </summary>
         internal string Id;
 
-        /// <summary>What the entry was resolved from, so another route cannot reuse it.</summary>
+        /// <summary>The lookup key repeated; the record is matched on it, so it equals the id asked for.</summary>
         internal string Identity;
 
-        /// <summary>How many parameters the method takes.</summary>
+        /// <summary>
+        /// The parameter count the caller could determine before the lookup, or zero when it could
+        /// not (the runtime route); kept so a record made for a differently shaped method is not
+        /// restored, and for inspection.
+        /// </summary>
         internal int Arity;
 
         /// <summary>The address, relative to the game module's base.</summary>
