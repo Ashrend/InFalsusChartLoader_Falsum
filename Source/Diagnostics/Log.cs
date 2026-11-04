@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -54,12 +55,12 @@ namespace InFalsusChartLoader_falsum
         /// <summary>Writes a held message out.</summary>
         internal static void Emit(string message) => Sink.Msg(message);
 
-        /// <summary>Holds a message back, or writes it out.</summary>
-        private static void Route(string message)
+        /// <summary>Holds a message back, or writes it out through the sink it came from.</summary>
+        private static void Route(string message, Action<string> write)
         {
             if (!_deferring)
             {
-                Sink.Msg(message);
+                write(message);
                 return;
             }
 
@@ -72,25 +73,25 @@ namespace InFalsusChartLoader_falsum
         internal static void Info(string message)
         {
 #if DEBUG
-            Route(message);
+            Route(message, Sink.Msg);
 #endif
         }
 
         /// <summary>The startup state every build reports.</summary>
-        internal static void Load(string message) => Route(message);
+        internal static void Load(string message) => Route(message, Sink.Msg);
 
         /// <summary>A failure the mod has stopped doing its work for.</summary>
-        internal static void Error(string message) => Route(message);
+        internal static void Error(string message) => Route(message, Sink.Error);
 
         /// <summary>A warning a Release build keeps for the player.</summary>
-        internal static void WarnRelease(string message) => Route(message);
+        internal static void WarnRelease(string message) => Route(message, Sink.Warning);
 
         /// <summary>Debug-only warning about a failure the mod works around.</summary>
         [Conditional("DEBUG")]
         internal static void Warn(string message)
         {
 #if DEBUG
-            Route(message);
+            Route(message, Sink.Warning);
 #endif
         }
 
