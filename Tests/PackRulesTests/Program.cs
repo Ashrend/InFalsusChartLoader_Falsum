@@ -1,6 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace InFalsusChartLoader_falsum.Tests
@@ -83,6 +85,7 @@ namespace InFalsusChartLoader_falsum.Tests
             RoutingTests();
             ReloadPlanTests();
             CacheTests();
+            ImageTests();
 
             Environment.ExitCode = _failed == 0 ? 0 : 1;
         }
@@ -479,6 +482,26 @@ namespace InFalsusChartLoader_falsum.Tests
                       new AddressEntry { Id = "a", Identity = "x", Arity = 0, Rva = -1, Prologue = new byte[16] },
                       entry,
                   }).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 1);
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr GetModuleHandleW(string moduleName);
+
+        private static void ImageTests()
+        {
+            // The running program's own module is a real PE image, so the offset arithmetic
+            // can be checked against something real.
+            IntPtr own = GetModuleHandleW(null);
+            Check("the running program has a module", own != IntPtr.Zero);
+
+            long size = GameAssembly.ImageSizeAt(own);
+            Check("the image size is a sane number", size > 0 && size < 0x80000000);
+            Check("the image size covers the file on disk",
+                  size >= new FileInfo(Process.GetCurrentProcess().MainModule.FileName).Length);
+            Check("a null image has no size", GameAssembly.ImageSizeAt(IntPtr.Zero) == 0);
+
+            // Not a PE image at all: the first word is not 'MZ'.
+            Check("a non-PE address has no size", GameAssembly.ImageSizeAt(new IntPtr(0x1000)) == 0);
         }
 
         private static string TempFolder()

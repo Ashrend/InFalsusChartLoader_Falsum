@@ -20,5 +20,6 @@
     <Compile Include="..\..\Source\Diagnostics\Log.cs" Link="Log.cs" />
     <Compile Include="..\..\Source\Charts\ReloadPlan.cs" Link="ReloadPlan.cs" />
     <Compile Include="..\..\Source\Interop\AddressCacheEntries.cs" Link="AddressCacheEntries.cs" />
+    <Compile Include="..\..\Source\Interop\GameAssembly.cs" Link="GameAssembly.cs" />
   </ItemGroup>
 </Project>
