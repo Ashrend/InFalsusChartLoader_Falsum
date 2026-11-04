@@ -84,6 +84,7 @@ namespace InFalsusChartLoader_falsum.Tests
             RoutingTests();
             ReloadPlanTests();
             CacheTests();
+            CommitTests();
             ImageTests();
             CacheIdleTests();
 
@@ -392,6 +393,18 @@ namespace InFalsusChartLoader_falsum.Tests
             ReloadPlan.Compare(new List<string> { "a", "a" }, new List<string> { "a" },
                                out added, out removed);
             Check("compare treats names as a set", added == 0 && removed == 0);
+        }
+
+        private static void CommitTests()
+        {
+            Check("commit before anything was committed",
+                  ReloadPlan.ShouldCommit(false, null, "abc"));
+            Check("commit when the folder changed",
+                  ReloadPlan.ShouldCommit(true, "abc", "def"));
+            Check("no commit when nothing changed",
+                  !ReloadPlan.ShouldCommit(true, "abc", "abc"));
+            Check("no commit when the fingerprint is missing twice",
+                  !ReloadPlan.ShouldCommit(true, null, null));
         }
 
         private static void CacheTests()

@@ -100,5 +100,16 @@ namespace InFalsusChartLoader_falsum
             foreach (string name in old)
                 if (!now.Contains(name)) removed++;
         }
+
+        /// <summary>Whether the tables should be written now.</summary>
+        /// <remarks>
+        /// The first commit always happens: nothing has been written yet, so the folders
+        /// count as changed. After that, only a different fingerprint means something moved.
+        /// </remarks>
+        internal static bool ShouldCommit(bool committed, string applied, string current)
+        {
+            if (!committed) return true;
+            return !string.Equals(applied, current, StringComparison.Ordinal);
+        }
     }
 }
