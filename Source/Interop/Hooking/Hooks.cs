@@ -50,6 +50,10 @@ namespace InFalsusChartLoader_falsum
 
         internal static void Install()
         {
+#if DEBUG
+            long started = Now;
+#endif
+
             int installed = 0;
             int attempted = 0;
 
@@ -77,6 +81,10 @@ namespace InFalsusChartLoader_falsum
             // down once all of them are in. Nothing is written when no target was resolved here,
             // and nothing at all when the game module could not be keyed on.
             AddressCache.Flush();
+
+#if DEBUG
+            Diagnostics.Info($"hooks installed in {Ms(started):F0} ms");
+#endif
 
             Diagnostics.Load($"{installed}/{attempted} hooks installed");
             if (installed < attempted)

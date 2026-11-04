@@ -15,8 +15,15 @@ namespace InFalsusChartLoader_falsum
         internal static IntPtr ByName(string typeName, string methodName)
         {
             string id = "m:" + typeName + "." + methodName;
-            return AddressCache.Code(id, id, ArityOf(typeName, methodName),
+#if DEBUG
+            long started = Hooks.Now;
+#endif
+            IntPtr p = AddressCache.Code(id, id, ArityOf(typeName, methodName),
                 () => ViaMethodInfo(typeName, methodName));
+#if DEBUG
+            Diagnostics.Info($"{typeName}.{methodName} -> 0x{p.ToInt64():X} in {Hooks.Ms(started):F0} ms");
+#endif
+            return p;
         }
 
         /// <summary>How many parameters a method takes, or zero when it cannot be told.</summary>
@@ -95,7 +102,14 @@ namespace InFalsusChartLoader_falsum
         internal static IntPtr ByRuntime(string typeName, string methodName, string image, string namespaze)
         {
             string id = "r:" + typeName + "." + methodName + "@" + image;
-            return AddressCache.Code(id, id, 0, () => ViaRuntime(typeName, methodName, image, namespaze));
+#if DEBUG
+            long started = Hooks.Now;
+#endif
+            IntPtr p = AddressCache.Code(id, id, 0, () => ViaRuntime(typeName, methodName, image, namespaze));
+#if DEBUG
+            Diagnostics.Info($"{typeName}.{methodName} -> 0x{p.ToInt64():X} in {Hooks.Ms(started):F0} ms");
+#endif
+            return p;
         }
 
         /// <summary>The slow way to a method's native address: a walk of the runtime's class.</summary>
