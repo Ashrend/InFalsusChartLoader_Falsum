@@ -137,19 +137,25 @@ namespace InFalsusChartLoader_falsum
         /// <remarks>
         /// Without the game module there is nothing to key the cache on, so the cache stays
         /// inert: nothing is read, nothing is written, and every target is resolved live.
+        /// The module may still be on its way, so "not there yet" is not remembered as "read
+        /// already": the identity is asked again the next time.
         /// </remarks>
         private static void Load()
         {
             if (_loaded) return;
-            _loaded = true;
 
             string identity = GameAssembly.Identity;
             if (identity == null)
             {
+                // The game module is not there. The flag is deliberately not set: the module
+                // may still load, and the identity is askable again. Latching it here would
+                // keep the whole session's cache inert after one early call, and that call
+                // is not made twice - the startup would stay slow, and say nothing about it.
                 Diagnostics.Info("the game module is not there; the address cache stays inert");
                 return;
             }
 
+            _loaded = true;
             _enabled = true;
             _key = AddressCacheEntries.Key(identity, ModCore.Version);
 

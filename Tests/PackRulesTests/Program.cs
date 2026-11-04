@@ -523,6 +523,18 @@ namespace InFalsusChartLoader_falsum.Tests
             Check("an unresolved target is zero", failed == IntPtr.Zero);
             AddressCache.Code("test:unresolved", "test:unresolved", 3, () => { retried++; return IntPtr.Zero; });
             Check("an unresolved target is not asked again", retried == 1);
+
+            // Nothing may be written: this process has no game module, so the cache stays inert.
+            // The file may already exist from a real game run, so the check is that Flush leaves
+            // it exactly as it found it - not that it is absent.
+            string file = AddressCache.Path;
+            bool existed = File.Exists(file);
+            long length = existed ? new FileInfo(file).Length : -1;
+
+            AddressCache.Flush();
+
+            Check("the cache wrote no file", File.Exists(file) == existed);
+            Check("the cache did not change the file", !existed || new FileInfo(file).Length == length);
         }
 
         private static string TempFolder()
