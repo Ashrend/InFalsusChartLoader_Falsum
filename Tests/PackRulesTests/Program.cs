@@ -442,6 +442,43 @@ namespace InFalsusChartLoader_falsum.Tests
             Check("prologue rejects a different length",
                   !AddressCacheEntries.PrologueMatches(entry.Prologue, new byte[8]));
             Check("prologue rejects null", !AddressCacheEntries.PrologueMatches(null, entry.Prologue));
+
+            // The on-disk format's two contested rules, pinned so they cannot drift.
+            Check("cache terminates every record",
+                  text == "m:_s._VA\tm:_s._VA\t3\t4660\t48895c2408574883ec20498bf0909090\n");
+            Check("cache tolerates a blank line",
+                  AddressCacheEntries.TryParse(text + "\n" + text, out List<AddressEntry> two) && two.Count == 2);
+            Check("cache rejects six fields",
+                  !AddressCacheEntries.TryParse("id\tidentity\t3\t0\t" + new string('0', 32) + "\textra", out _));
+
+            // The rest of what the brief requires, each with its own check.
+            Check("cache key needs both parts",
+                  AddressCacheEntries.Key("", Version) == "" && AddressCacheEntries.Key(GameId, "") == "");
+            Check("cache serializes an empty list", AddressCacheEntries.Serialize(new List<AddressEntry>()) == "");
+            Check("cache skips a record with a tab in the id",
+                  AddressCacheEntries.Serialize(new List<AddressEntry>
+                  {
+                      new AddressEntry { Id = "a\tb", Identity = "x", Arity = 0, Rva = 0, Prologue = new byte[16] },
+                      entry,
+                  }).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 1);
+            Check("cache rejects empty text", !AddressCacheEntries.TryParse("", out _));
+            Check("cache rejects an empty id",
+                  !AddressCacheEntries.TryParse("\tidentity\t3\t0\t" + new string('0', 32), out _));
+            Check("cache round trips two entries",
+                  AddressCacheEntries.TryParse(text + text, out List<AddressEntry> pair) && pair.Count == 2 &&
+                  pair[1].Id == "m:_s._VA" && pair[1].Rva == 0x1234);
+
+            // The reader is as strict as the writer: only the shapes Serialize writes are read back.
+            Check("cache rejects a padded arity",
+                  !AddressCacheEntries.TryParse("id\tidentity\t 3 \t0\t" + new string('0', 32), out _));
+            Check("cache rejects a signed arity",
+                  !AddressCacheEntries.TryParse("id\tidentity\t+3\t0\t" + new string('0', 32), out _));
+            Check("cache skips a record it could not read back",
+                  AddressCacheEntries.Serialize(new List<AddressEntry>
+                  {
+                      new AddressEntry { Id = "a", Identity = "x", Arity = 0, Rva = -1, Prologue = new byte[16] },
+                      entry,
+                  }).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 1);
         }
 
         private static string TempFolder()

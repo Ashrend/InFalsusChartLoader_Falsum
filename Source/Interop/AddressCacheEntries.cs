@@ -31,9 +31,10 @@ namespace InFalsusChartLoader_falsum
     /// <summary>The cache's records: how they are keyed, written, read back and checked.</summary>
     /// <remarks>
     /// A record is one line of five tab-separated fields:
-    /// <c>Id \t Identity \t Arity \t Rva \t PrologueHex</c>. The format is written by hand on purpose:
-    /// it has to live in a plain console test project, and a cache file has to stay readable when it
-    /// is opened by hand.
+    /// <c>Id \t Identity \t Arity \t Rva \t PrologueHex</c>. Every record ends with a newline, the
+    /// last one included, so the cache is an ordinary line-oriented text file. The format is written
+    /// by hand on purpose: it has to live in a plain console test project, and a cache file has to
+    /// stay readable when it is opened by hand.
     /// </remarks>
     internal static class AddressCacheEntries
     {
@@ -50,7 +51,7 @@ namespace InFalsusChartLoader_falsum
             return gameIdentity + "|" + modVersion;
         }
 
-        /// <summary>The records as text: one line each, tab-separated.</summary>
+        /// <summary>The records as text: one line each, tab-separated, every line ended by a newline.</summary>
         /// <remarks>
         /// A record whose id, identity or prologue cannot be written the way a reader expects it is
         /// left out rather than written badly: one bad line would throw the whole cache away.
@@ -64,12 +65,12 @@ namespace InFalsusChartLoader_falsum
             {
                 if (!Writable(entry)) continue;
 
-                if (text.Length > 0) text.Append('\n');
                 text.Append(entry.Id).Append('\t')
                     .Append(entry.Identity).Append('\t')
                     .Append(entry.Arity.ToString(CultureInfo.InvariantCulture)).Append('\t')
                     .Append(entry.Rva.ToString(CultureInfo.InvariantCulture)).Append('\t')
-                    .Append(Hex(entry.Prologue));
+                    .Append(Hex(entry.Prologue))
+                    .Append('\n');
             }
 
             return text.ToString();
@@ -77,8 +78,9 @@ namespace InFalsusChartLoader_falsum
 
         /// <summary>The records the text holds, or false when the text is not a cache.</summary>
         /// <remarks>
-        /// Every line has to be a whole record. A file that was cut short, or written by something
-        /// else, is refused as a whole: half a cache would hand out addresses that belong to nothing.
+        /// Every line that holds something has to be a whole record. A file that was cut short, or
+        /// written by something else, is refused as a whole: half a cache would hand out addresses
+        /// that belong to nothing. A blank line is a line ending, not damage, so it is skipped.
         /// </remarks>
         internal static bool TryParse(string text, out List<AddressEntry> entries)
         {
@@ -95,9 +97,9 @@ namespace InFalsusChartLoader_falsum
                 string[] fields = line.Split('\t');
                 if (fields.Length != FieldCount) return false;
                 if (!SafeField(fields[0]) || !SafeField(fields[1])) return false;
-                if (!int.TryParse(fields[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int arity))
+                if (!int.TryParse(fields[2], NumberStyles.None, CultureInfo.InvariantCulture, out int arity))
                     return false;
-                if (!long.TryParse(fields[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out long rva))
+                if (!long.TryParse(fields[3], NumberStyles.None, CultureInfo.InvariantCulture, out long rva))
                     return false;
 
                 byte[] prologue = Unhex(fields[4]);
@@ -145,10 +147,16 @@ namespace InFalsusChartLoader_falsum
         }
 
         /// <summary>Whether a record can be written the way a reader expects to read it back.</summary>
+        /// <remarks>
+        /// The reader takes the arity and the rva as plain unsigned decimals, so a record that would
+        /// need a minus sign is left out instead of being written in a shape that would throw the
+        /// whole file away.
+        /// </remarks>
         private static bool Writable(AddressEntry entry)
         {
             if (entry == null) return false;
             if (!SafeField(entry.Id) || !SafeField(entry.Identity)) return false;
+            if (entry.Arity < 0 || entry.Rva < 0) return false;
             return entry.Prologue != null && entry.Prologue.Length == PrologueLength;
         }
 
