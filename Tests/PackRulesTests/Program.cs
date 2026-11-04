@@ -85,6 +85,7 @@ namespace InFalsusChartLoader_falsum.Tests
             ReloadPlanTests();
             CacheTests();
             CommitTests();
+            DeferTests();
             ImageTests();
             CacheIdleTests();
 
@@ -407,6 +408,21 @@ namespace InFalsusChartLoader_falsum.Tests
                   !ReloadPlan.ShouldCommit(true, "abc", "abc"));
             Check("no commit when the fingerprint is missing twice",
                   !ReloadPlan.ShouldCommit(true, null, null));
+        }
+
+        private static void DeferTests()
+        {
+            Check("defer starts empty", Diagnostics.EndDefer().Count == 0);
+
+            Diagnostics.BeginDefer();
+            Diagnostics.Info("buffered one");
+            Diagnostics.Warn("buffered two");
+
+            List<string> lines = Diagnostics.EndDefer();
+            Check("defer keeps the lines", lines.Count == 2);
+            Check("defer keeps the order",
+                  lines[0].Contains("buffered one") && lines[1].Contains("buffered two"));
+            Check("defer ends", Diagnostics.EndDefer().Count == 0);
         }
 
         private static void CacheTests()

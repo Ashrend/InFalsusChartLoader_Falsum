@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace InFalsusChartLoader_falsum
@@ -28,30 +29,68 @@ namespace InFalsusChartLoader_falsum
 #endif
         }
 
+        /// <summary>Whether this thread's messages are being held back.</summary>
+        [ThreadStatic] private static bool _deferring;
+
+        /// <summary>The messages this thread has held back.</summary>
+        [ThreadStatic] private static List<string> _held;
+
+        /// <summary>Starts holding this thread's messages back.</summary>
+        internal static void BeginDefer()
+        {
+            _held = new List<string>();
+            _deferring = true;
+        }
+
+        /// <summary>Takes the held messages and stops holding them back.</summary>
+        internal static List<string> EndDefer()
+        {
+            List<string> held = _held ?? new List<string>();
+            _held = null;
+            _deferring = false;
+            return held;
+        }
+
+        /// <summary>Writes a held message out.</summary>
+        internal static void Emit(string message) => Sink.Msg(message);
+
+        /// <summary>Holds a message back, or writes it out.</summary>
+        private static void Route(string message)
+        {
+            if (!_deferring)
+            {
+                Sink.Msg(message);
+                return;
+            }
+
+            if (_held == null) _held = new List<string>();
+            _held.Add(message);
+        }
+
         /// <summary>Debug-only narration about a run.</summary>
         [Conditional("DEBUG")]
         internal static void Info(string message)
         {
 #if DEBUG
-            Sink.Msg(message);
+            Route(message);
 #endif
         }
 
         /// <summary>The startup state every build reports.</summary>
-        internal static void Load(string message) => Sink.Msg(message);
+        internal static void Load(string message) => Route(message);
 
         /// <summary>A failure the mod has stopped doing its work for.</summary>
-        internal static void Error(string message) => Sink.Error(message);
+        internal static void Error(string message) => Route(message);
 
         /// <summary>A warning a Release build keeps for the player.</summary>
-        internal static void WarnRelease(string message) => Sink.Warning(message);
+        internal static void WarnRelease(string message) => Route(message);
 
         /// <summary>Debug-only warning about a failure the mod works around.</summary>
         [Conditional("DEBUG")]
         internal static void Warn(string message)
         {
 #if DEBUG
-            Sink.Warning(message);
+            Route(message);
 #endif
         }
 
