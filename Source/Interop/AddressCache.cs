@@ -162,9 +162,10 @@ namespace InFalsusChartLoader_falsum
 
         /// <summary>What the cache did this start: one line, in the DEBUG channel.</summary>
         /// <remarks>
-        /// Called once, after the install has asked for every address it needs. A cache that was
-        /// never read says so: an inert cache must not be printed as a working one that restored
-        /// nothing, so the status word, not the counters, carries that.
+        /// Called after each tier has asked for every address it needs, so the line printed at the
+        /// end of the deferred install covers the whole session while the one printed at startup
+        /// does not. A cache that was never read says so: an inert cache must not be printed as a
+        /// working one that restored nothing, so the status word, not the counters, carries that.
         /// </remarks>
         [System.Diagnostics.Conditional("DEBUG")]
         internal static void Report()

@@ -120,19 +120,28 @@ namespace InFalsusChartLoader_falsum
 
             // The first tier is what the song select itself uses: the two Awake detours that make
             // the commit point, the selection handler, the pack card layout, the audio reader and the
-            // jacket handles, and the scene-switch probe. Measured on a session that opened the song
-            // select without playing anything: every one of these fired, and every hook left out below
-            // stayed at zero. Each attach costs about 400 ms, so the split is what keeps the game's
-            // startup from paying for hooks that cannot be reached before a song is picked.
-            Count(InstallAudioLoad());        // zga=1191, dja=13     -> fired
-            Count(InstallJacket());           // _apA=1, _MIA=1       -> fired; the other three jacket
-                                              //                        hooks are deferred (zoa/lia/uma=0)
-            Count(InstallSongSelect());       // apply=0, but this is the entry point for picking a
-                                              // song: the measured session never picked one
-            Count(InstallSongSelectAwake());  // the commit point
-            Count(InstallPackSelectAwake());  // the commit point
-            Count(InstallPackVisual());       // rowN=1               -> fired
-            Count(InstallSceneSwitch());      // switch=12949         -> fired
+            // jacket handles, and the scene-switch probe. Each attach costs about 400 ms, so the
+            // split is what keeps the game's launch from paying for hooks that cannot be reached
+            // before a song is picked.
+            //
+            // The evidence is per hook, and it is what each line below says: it is not "everything
+            // here fired, everything left out was zero". In the measured session - the song select
+            // opened, nothing played - the play gate and the result read detours, both in the
+            // deferred tier, fired too (twice and 140 times). What puts a hook here is when it has
+            // to be reachable, and for the two Awake detours that is structure, not a counter.
+            Count(InstallAudioLoad());        // zga=1191, dja=13 -> fired
+            Count(InstallJacket());           // _apA=1, _MIA=1 -> fired. _ZOA/_LIA/_UmA were 0, but
+                                              //  the session never loaded a chart, so that zero is
+                                              //  uninformative; they are deferred on structure
+            Count(InstallSongSelect());       // apply=0/0 -> uninformative: no song was picked. Kept
+                                              //  because it is the entry point for picking one
+            Count(InstallSongSelectAwake());  // no counter of its own: "charts loaded: 13" proves a
+                                              //  commit ran, not which Awake made it. Structural
+            Count(InstallPackSelectAwake());  // the other commit point, on the same structural basis
+            Count(InstallPackVisual());       // rowN=1 -> fired. _vc has a counter of its own
+                                              //  (pack=0/0) that this session never moved; _bC and
+                                              //  _Yn have none
+            Count(InstallSceneSwitch());      // switch=12949 -> fired
 
             Installed = installed;
             Attempted = attempted;
@@ -154,15 +163,28 @@ namespace InFalsusChartLoader_falsum
                 Diagnostics.Warn("a hook is missing; whatever it drives will silently do nothing");
         }
 
-        /// <summary>Installs the hooks no song select screen can reach before a song is picked.</summary>
+        /// <summary>Installs the hooks a song select does not need until its tables are written.</summary>
         /// <remarks>
-        /// Every hook here stayed at zero for the measured session that opened the song select and
-        /// never played a song, so none of them can be needed before then. The caller may re-enter
-        /// (the song select's <c>Awake</c> runs this), and a second attach would build a second
-        /// <see cref="NativeHook{T}"/> over the same code: the first would leak and the code could be
-        /// patched twice. The flag and the lock make a second call attach nothing.
+        /// This tier is not "the hooks that were all at zero". In the measured session - the song
+        /// select opened, nothing played - the play gate fired twice and the result read detours
+        /// fired 140 times, so part of this tier is demonstrably reachable from the song select. What
+        /// puts a hook here is when it has to be in place, and the call site is half of that: it
+        /// sits at the end of <c>Reload.Commit</c>, after the tables are written and inside the
+        /// screen's <c>Awake</c>, which is early enough for the gate and for the result read the page
+        /// makes next, and late enough that the attach is off the game's launch. A zero here is not
+        /// evidence either: the session that produced the numbers played nothing, opened no results
+        /// screen and drew no chart. Each installer's comment says which part of the evidence it
+        /// stands on.
+        /// <para>
+        /// The caller may re-enter (the song select's <c>Awake</c> runs this), and a second attach
+        /// would build a second <see cref="NativeHook{T}"/> over the same code: the first would
+        /// leak and the code could be patched twice. The flag and the lock make a second call
+        /// attach nothing.
+        /// </para>
+        /// <para>
         /// <see cref="Installed"/> and <see cref="Attempted"/> are deliberately not touched: they
         /// describe the first tier, which is what the startup line has to keep showing.
+        /// </para>
         /// </remarks>
         internal static void InstallDeferred()
         {
@@ -178,19 +200,23 @@ namespace InFalsusChartLoader_falsum
                 long started = Now;
 #endif
 
-                InstallChartLoad();        // va=0
-                InstallChartStart();       // cs=0
-                InstallPause();            // hold=0/0
-                InstallPlayGate();         // gate=0/0
-                InstallDifficultyState();  // state=0/0
-                InstallCustomResults();    // upd/enc/saved=0
-                InstallResultsUnlock();    // unlock=0/0
+                InstallChartLoad();        // va=0 -> uninformative: no song was ever loaded
+                InstallChartStart();       // cs=0 -> the same, nothing was ever played
+                InstallPause();            // the printed hold= is VideoBackground.Holds, not this
+                                           //  hook's counter; MusicPauses is never printed, so there
+                                           //  is no evidence either way. Structural
+                InstallPlayGate();         // gate=2 inside the song select: it is reachable as soon
+                                           //  as the screen is, so it has to be in place by this point
+                InstallDifficultyState();  // state=0/0 -> uninformative: no difficulty was looked at
+                InstallCustomResults();    // ifcl=140, all before the first commit, when no custom
+                                           //  song existed; the read after it is the one to answer
+                InstallResultsUnlock();    // unlock=0/0 -> uninformative: no results screen opened
 
-                // These three used to be chained off the end of InstallJacket(); all three were at
-                // zero in the measured session, so they belong after the commit with the rest.
-                InstallChartReference();   // zoa=0
-                InstallChartLoader();      // lia=0
-                InstallBackground();       // uma=0
+                // These three used to be chained off the end of InstallJacket(); a session that
+                // loaded no chart could not have asked for them, so their zeros say nothing.
+                InstallChartReference();   // zoa=0, no chart was ever shown
+                InstallChartLoader();      // lia=0, no chart was ever loaded
+                InstallBackground();       // uma=0, nothing was ever played
 
                 // The addresses resolved above are what the next visit to the song select skips,
                 // so they are written down now that all of them are in. A cache that took them all
@@ -199,6 +225,12 @@ namespace InFalsusChartLoader_falsum
 
 #if DEBUG
                 Diagnostics.Info($"deferred hooks installed in {Ms(Now - started):F0} ms");
+
+                // Printed again now that the last address has been asked for. The line in Install()
+                // stops at the first tier and cannot report what the deferred tier restored, so
+                // this is the one that covers the whole session - and the one the in-game
+                // verification reads.
+                AddressCache.Report();
 #endif
             }
         }
@@ -219,6 +251,10 @@ namespace InFalsusChartLoader_falsum
             DetachPause();
             DetachChartStart();
             DetachChartLoad();
+
+            // The deferred tier is detached with the rest, so a later install has to be allowed to
+            // put it back: without this the flag would claim its 14 hooks are still in place.
+            _deferredInstalled = false;
         }
 
         /// <summary>The first bytes at a hook target.</summary>

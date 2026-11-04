@@ -52,6 +52,7 @@ namespace InFalsusChartLoader_falsum
 
             _busy = true;
             bool committed = false;
+            bool defer = false;
             try
             {
                 // A folder that cannot be read is not an empty folder: keep everything as it is.
@@ -175,6 +176,12 @@ namespace InFalsusChartLoader_falsum
                     ? $"charts loaded: {added} song(s)"
                     : $"charts reloaded: +{added} ~{updated} -{removed}");
                 _first = false;
+
+                // The commit is complete. Everything after this point is the deferred tier, and
+                // that call is made outside the try: the catch below exists to undo a commit that
+                // threw halfway, and by now there is nothing left to undo. An attach that throws
+                // must cost its own tier, not the tables this method has just written.
+                defer = true;
             }
             catch (Exception e)
             {
@@ -194,6 +201,17 @@ namespace InFalsusChartLoader_falsum
             {
                 _busy = false;
             }
+
+            if (!defer) return;
+
+            // The rest of the hooks are installed here, after the tables have been written: a start
+            // that fails before this point leaves them uninstalled, which is correct, because
+            // nothing has been written for them to serve. Doing it now rather than at startup keeps
+            // ~5 s of native attach off the game's launch and puts it on the one screen that already
+            // waits for the charts to be read. It runs before the page's own Awake body, so the
+            // result read that follows is answered: in the measured session the result detours fired
+            // 140 times before the first commit, when no custom song existed.
+            Hooks.InstallDeferred();
         }
 
         /// <summary>The game's song and pack tables, waiting a little for them if need be.</summary>
