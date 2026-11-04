@@ -66,6 +66,9 @@ namespace InFalsusChartLoader_falsum
         /// <summary>The worker, or null before the first <see cref="Start"/>.</summary>
         private static Task _worker;
 
+        /// <summary>The round <see cref="_worker"/> was started for.</summary>
+        private static int _workerRound;
+
         /// <summary>Which round is current. Every reset bumps it, so an older result is dropped.</summary>
         private static int _round;
 
@@ -87,14 +90,23 @@ namespace InFalsusChartLoader_falsum
         /// <summary>Whether the check has finished and the failed songs have been pruned.</summary>
         private static bool _ready;
 
-        /// <summary>Whether the worker is still reading the folders.</summary>
+        /// <summary>Whether a worker is still reading the folders for the current round.</summary>
         internal static bool Running
         {
             get
             {
-                lock (Gate) return _worker != null && !_worker.IsCompleted;
+                lock (Gate) return Reading;
             }
         }
+
+        /// <summary>Whether the current round has a worker that has not finished yet.</summary>
+        /// <remarks>
+        /// Called under <see cref="Gate"/>. A worker from a round a reset has superseded is still
+        /// running, but it is not reading for the current round: its result is dropped when it lands.
+        /// Counting it here would let <see cref="Start"/> refuse a request whose round nobody is
+        /// working on, and the folder would then never be read — a snapshot that silently never appears.
+        /// </remarks>
+        private static bool Reading => _worker != null && !_worker.IsCompleted && _workerRound == _round;
 
         /// <summary>Whether a snapshot has been taken, checked or not.</summary>
         internal static bool HasSnapshot
@@ -136,15 +148,19 @@ namespace InFalsusChartLoader_falsum
             }
         }
 
-        /// <summary>Starts reading the folders in the background; a round already running is left alone.</summary>
+        /// <summary>Starts reading the folders in the background; a round already being read is left alone.</summary>
         internal static void Start(string root)
         {
             lock (Gate)
             {
-                if (_worker != null && !_worker.IsCompleted) return;
+                // Only a worker reading the round this call would continue counts. One left over from a
+                // round a reset has discarded must not block a fresh read: its result will be dropped
+                // when it lands, and the round asked for here would then never be read by anyone.
+                if (Reading) return;
 
                 ResetLocked();
                 int number = _round;
+                _workerRound = number;
                 _worker = Task.Run(() => Import(root, number));
             }
         }
@@ -246,6 +262,10 @@ namespace InFalsusChartLoader_falsum
         }
 
         /// <summary>Drops the snapshot and the queue; a round still running will be discarded.</summary>
+        /// <remarks>
+        /// Main thread only, as with every member that touches the snapshot: the queue is walked
+        /// without the lock, and a reset from another thread would race with that walk.
+        /// </remarks>
         internal static void Reset()
         {
             lock (Gate) ResetLocked();
@@ -275,9 +295,13 @@ namespace InFalsusChartLoader_falsum
             Diagnostics.BeginDefer();
             try
             {
-                if (ReloadPlan.TryFingerprint(root, out string fingerprint)) round.Fingerprint = fingerprint;
-
                 round.Packs = ChartLibrary.Import(root, NeverFails);
+
+                // The print is taken after the read, on purpose: it then describes a state that was
+                // true at or after the moment the contents were read, so a change that lands later
+                // makes this snapshot look stale and it is read again. The other order could stamp
+                // contents read before a change with a print the change's revert makes look current.
+                if (ReloadPlan.TryFingerprint(root, out string fingerprint)) round.Fingerprint = fingerprint;
             }
             catch (Exception e)
             {
