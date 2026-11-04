@@ -260,12 +260,29 @@ namespace InFalsusChartLoader_falsum
         {
             string name = Path.GetFileName(original);
             if (string.IsNullOrEmpty(name)) throw new InvalidDataException("falsum asset has no file name");
+
             string folder = Path.Combine(cache, role);
             Directory.CreateDirectory(folder);
             string target = Path.Combine(folder, name);
-            using Stream input = entry.Open();
-            using FileStream output = File.Create(target);
-            input.CopyTo(output);
+
+            // Two imports can be in flight at once: the worker and the main thread. The file is
+            // written beside its target and moved into place, so a reader never sees half of one.
+            string temporary = target + "." + Guid.NewGuid().ToString("N") + ".part";
+
+            try
+            {
+                using Stream input = entry.Open();
+                using (FileStream output = File.Create(temporary))
+                    input.CopyTo(output);
+
+                File.Move(temporary, target, overwrite: true);
+            }
+            catch
+            {
+                try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
+                throw;
+            }
+
             return target;
         }
 
