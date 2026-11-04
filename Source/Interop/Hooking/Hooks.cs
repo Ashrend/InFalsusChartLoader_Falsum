@@ -97,8 +97,15 @@ namespace InFalsusChartLoader_falsum
         }
 
         /// <summary>How many hooks went in, and how many were tried.</summary>
+        /// <remarks>These are the first tier's numbers, and the startup line uses them.</remarks>
         internal static int Installed { get; private set; }
         internal static int Attempted { get; private set; }
+
+        /// <summary>Serialises the deferred install, which is entered from a game callback.</summary>
+        private static readonly object Gate = new object();
+
+        /// <summary>Whether the deferred tier has been installed; a second call must attach nothing.</summary>
+        private static bool _deferredInstalled;
 
         internal static void Install()
         {
@@ -111,20 +118,21 @@ namespace InFalsusChartLoader_falsum
 
             void Count(bool ok) { attempted++; if (ok) installed++; }
 
-            Count(InstallChartLoad());
-            Count(InstallChartStart());
-            Count(InstallPause());
-            Count(InstallAudioLoad());
-            Count(InstallJacket());
-            Count(InstallSongSelect());
-            Count(InstallSongSelectAwake());
-            Count(InstallPackSelectAwake());
-            Count(InstallDifficultyState());
-            Count(InstallPackVisual());
-            Count(InstallCustomResults());
-            Count(InstallResultsUnlock());
-            Count(InstallPlayGate());
-            Count(InstallSceneSwitch());
+            // The first tier is what the song select itself uses: the two Awake detours that make
+            // the commit point, the selection handler, the pack card layout, the audio reader and the
+            // jacket handles, and the scene-switch probe. Measured on a session that opened the song
+            // select without playing anything: every one of these fired, and every hook left out below
+            // stayed at zero. Each attach costs about 400 ms, so the split is what keeps the game's
+            // startup from paying for hooks that cannot be reached before a song is picked.
+            Count(InstallAudioLoad());        // zga=1191, dja=13     -> fired
+            Count(InstallJacket());           // _apA=1, _MIA=1       -> fired; the other three jacket
+                                              //                        hooks are deferred (zoa/lia/uma=0)
+            Count(InstallSongSelect());       // apply=0, but this is the entry point for picking a
+                                              // song: the measured session never picked one
+            Count(InstallSongSelectAwake());  // the commit point
+            Count(InstallPackSelectAwake());  // the commit point
+            Count(InstallPackVisual());       // rowN=1               -> fired
+            Count(InstallSceneSwitch());      // switch=12949         -> fired
 
             Installed = installed;
             Attempted = attempted;
@@ -144,6 +152,55 @@ namespace InFalsusChartLoader_falsum
             Diagnostics.Load($"{installed}/{attempted} hooks installed");
             if (installed < attempted)
                 Diagnostics.Warn("a hook is missing; whatever it drives will silently do nothing");
+        }
+
+        /// <summary>Installs the hooks no song select screen can reach before a song is picked.</summary>
+        /// <remarks>
+        /// Every hook here stayed at zero for the measured session that opened the song select and
+        /// never played a song, so none of them can be needed before then. The caller may re-enter
+        /// (the song select's <c>Awake</c> runs this), and a second attach would build a second
+        /// <see cref="NativeHook{T}"/> over the same code: the first would leak and the code could be
+        /// patched twice. The flag and the lock make a second call attach nothing.
+        /// <see cref="Installed"/> and <see cref="Attempted"/> are deliberately not touched: they
+        /// describe the first tier, which is what the startup line has to keep showing.
+        /// </remarks>
+        internal static void InstallDeferred()
+        {
+            lock (Gate)
+            {
+                // Set before the attaches, not after: a re-entrant call on this same thread has to
+                // find the flag already up, or it would attach the whole tier again. The lock is
+                // what keeps a call from another thread out.
+                if (_deferredInstalled) return;
+                _deferredInstalled = true;
+
+#if DEBUG
+                long started = Now;
+#endif
+
+                InstallChartLoad();        // va=0
+                InstallChartStart();       // cs=0
+                InstallPause();            // hold=0/0
+                InstallPlayGate();         // gate=0/0
+                InstallDifficultyState();  // state=0/0
+                InstallCustomResults();    // upd/enc/saved=0
+                InstallResultsUnlock();    // unlock=0/0
+
+                // These three used to be chained off the end of InstallJacket(); all three were at
+                // zero in the measured session, so they belong after the commit with the rest.
+                InstallChartReference();   // zoa=0
+                InstallChartLoader();      // lia=0
+                InstallBackground();       // uma=0
+
+                // The addresses resolved above are what the next visit to the song select skips,
+                // so they are written down now that all of them are in. A cache that took them all
+                // from the file has nothing to write, and Flush is a no-op then.
+                AddressCache.Flush();
+
+#if DEBUG
+                Diagnostics.Info($"deferred hooks installed in {Ms(Now - started):F0} ms");
+#endif
+            }
         }
 
         internal static void Uninstall()

@@ -87,10 +87,9 @@ namespace InFalsusChartLoader_falsum
                 ok &= Landed(Hook.JacketMaterial, load, loadPrologue);
             }
 
-            ok &= InstallChartReference();
-            ok &= InstallChartLoader();
-
-            ok &= InstallBackground();
+            // `_ZOA`, `_LIA` and `_UmA` are not chained here: they were all at zero for a session
+            // that never played a song, so they are installed by the deferred tier. This return
+            // value therefore covers only the two handles the song select draws with.
             return ok;
         }
 
