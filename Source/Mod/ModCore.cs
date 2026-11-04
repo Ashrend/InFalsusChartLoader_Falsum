@@ -3,20 +3,17 @@ using System.Collections.Generic;
 
 namespace InFalsusChartLoader_falsum
 {
-    /// <summary>The mod: imports chart folders, installs hooks, and registers the songs.</summary>
+    /// <summary>The mod: installs hooks and registers the songs when the tables are written.</summary>
     internal static class ModCore
     {
         /// <summary>The mod's version, shared by both loader entries.</summary>
         internal const string Version = "0.5.0";
 
-        /// <summary>The packs and songs waiting for the game's data to exist.</summary>
+        /// <summary>The packs being registered; each commit replaces them.</summary>
         private static List<ChartPack> _imported = new List<ChartPack>();
 
-        private static bool _registered;
-
-        /// <summary>Marks the songs as registered, so the startup path stops trying.</summary>
-        /// <remarks>The reload registers on its own, and both paths must agree on who owns the tables.</remarks>
-        internal static void MarkRegistered() => _registered = true;
+        /// <summary>Whether the custom results' save container is ready.</summary>
+        private static bool _resultsReady;
 
 #if DEBUG
         /// <summary>Frames seen, for the probe's timer.</summary>
@@ -29,7 +26,7 @@ namespace InFalsusChartLoader_falsum
             Diagnostics.Load("InFalsusChartLoader_falsum loading...");
         }
 
-        /// <summary>Imports the chart folders and installs the hooks.</summary>
+        /// <summary>Installs the hooks; the folders are imported when the tables are written.</summary>
         internal static void Initialize()
         {
             try
@@ -46,12 +43,9 @@ namespace InFalsusChartLoader_falsum
                 string root = ChartLibrary.Locate();
                 Diagnostics.Info($"charts folder: {root}");
 
-                _imported = ChartLibrary.Import(root, Validate) ?? new List<ChartPack>();
-                int importedSongs = CountSongs(_imported);
-                Diagnostics.Load($"packs: {_imported.Count} imported, songs: {importedSongs} imported");
-
-                // The folder is what the reload watches, and the hooks are what lets it fire: an empty
-                // Charts/ still has to install them, or a song dropped in later could never be seen.
+                // The import and the injection are deliberately not done here: the game's tables
+                // are written from the song select, which is the only moment it is safe to touch
+                // them. Until then the mod has nothing but its hooks in place.
                 Reload.Start(root);
 
                 if (!string.IsNullOrEmpty(root)) Hooks.Install();
@@ -67,7 +61,7 @@ namespace InFalsusChartLoader_falsum
             }
         }
 
-        /// <summary>Registers the songs once the game's tables exist.</summary>
+        /// <summary>Prepares the custom results once the game's tables exist.</summary>
         internal static void Update()
         {
             VideoBackground.Follow();
@@ -76,23 +70,32 @@ namespace InFalsusChartLoader_falsum
             if (++_frames % 600 == 0) Diagnostics.Info("probe: counters       " + Probe.Status());
 #endif
 
-            if (_registered || _imported.Count == 0) return;
+            // The tables are written by Reload, from the song select. The one thing that has to
+            // happen early is the custom results' save container: the game asks for scores long
+            // before anything else, and the container is cheap to make.
+            if (_resultsReady) return;
 
             try
             {
-                if (!SongCatalog.TryGetAssets(out IntPtr songData, out IntPtr packData))
+                if (!SongCatalog.TryGetAssets(out _, out _))
                 {
-                    if (SongCatalog.Unusable) _registered = true;
+                    // The game will never have these tables: stop asking every frame.
+                    if (SongCatalog.Unusable)
+                    {
+                        _resultsReady = true;
+                        Diagnostics.Error("the game's song and pack tables could not be found; the custom " +
+                                          "songs will not be registered");
+                    }
                     return;
                 }
 
-                _registered = true;
-                Register(songData, packData, _imported);
+                CustomResults.Prepare();
+                _resultsReady = true;
             }
             catch (Exception e)
             {
-                _registered = true;
-                Diagnostics.Error($"registering the custom songs failed: {Diagnostics.Describe(e)}");
+                _resultsReady = true;      // do not try again every frame
+                Diagnostics.Error($"the custom results could not be prepared: {Diagnostics.Describe(e)}");
             }
         }
 
@@ -100,8 +103,8 @@ namespace InFalsusChartLoader_falsum
         /// Puts <paramref name="packs"/> into the game's tables and returns whether any song made it.
         /// </summary>
         /// <remarks>
-        /// Shared by the startup path and the reload path, so both go through the same registration.
-        /// The shipped tables are copied before the first injection; a reload restores them first.
+        /// The reload calls this with freshly imported packs. The shipped tables are copied before the
+        /// first injection; a later reload restores them first.
         /// </remarks>
         internal static bool Register(IntPtr songData, IntPtr packData, List<ChartPack> packs)
         {
@@ -151,6 +154,12 @@ namespace InFalsusChartLoader_falsum
                 BackgroundCatalog.Add(info, out _);
             }
 
+#if DEBUG
+            foreach (ChartInfo info in ready)
+                Probe.Imported(info, AudioCatalog.IndexOf(info.BaseName), AudioCatalog.BytesOf(info.BaseName),
+                               JacketCatalog.Count);
+#endif
+
             if (!SongCatalog.CaptureBaseline(songData, packData))
             {
                 Diagnostics.Error("the game's tables could not be copied, so nothing was added: a reload " +
@@ -191,8 +200,6 @@ namespace InFalsusChartLoader_falsum
                     PackSetup.SetPackName(pack.GamePackId, pack.Names);
             }
 
-            CustomResults.Prepare();
-
 #if DEBUG
             PackSetup.TryGetVisuals(out IntPtr packAssetsAfter);
             Probe.After(songData, packData, packAssetsAfter, ready);
@@ -221,14 +228,6 @@ namespace InFalsusChartLoader_falsum
             foreach (ChartPack pack in _imported)
                 pack.Charts.RemoveAll(chart => !allowed.Contains(chart));
             _imported.RemoveAll(pack => pack.Charts.Count == 0);
-        }
-
-        /// <summary>The number of songs across all imported packs.</summary>
-        private static int CountSongs(List<ChartPack> packs)
-        {
-            int count = 0;
-            foreach (ChartPack pack in packs) count += pack.Charts.Count;
-            return count;
         }
 
         /// <summary>Stops every detour. The loader calls this once, on the way out.</summary>
@@ -261,7 +260,7 @@ namespace InFalsusChartLoader_falsum
         /// <summary>Checks the charts a folder imports, without touching any picture cache.</summary>
         /// <remarks>
         /// The reload calls this while it is still deciding: a folder that fails here never reaches the
-        /// commit, so nothing half-read is registered. Pictures are built by <see cref="Validate"/>.
+        /// commit, so nothing half-read is registered. Pictures are built later, by <see cref="Register"/>.
         /// </remarks>
         internal static string ValidateChartsOnly(ChartInfo info)
         {
@@ -296,26 +295,6 @@ namespace InFalsusChartLoader_falsum
                     }
                 }
             }
-
-            return null;
-        }
-
-        /// <summary>Checks the charts a folder imports and registers its pictures.</summary>
-        internal static string Validate(ChartInfo info)
-        {
-            string reason = ValidateChartsOnly(info);
-            if (reason != null) return reason;
-
-            if (!JacketCatalog.Add(info, out string jacketReason))
-                Diagnostics.Warn($"'{info.Name}' has no jacket of its own: {jacketReason}");
-
-            if (!BackgroundCatalog.Add(info, out string backgroundReason))
-                Diagnostics.Warn($"'{info.Name}' has no background of its own: {backgroundReason}");
-
-#if DEBUG
-            Probe.Imported(info, AudioCatalog.IndexOf(info.BaseName), AudioCatalog.BytesOf(info.BaseName),
-                           JacketCatalog.Count);
-#endif
 
             return null;
         }

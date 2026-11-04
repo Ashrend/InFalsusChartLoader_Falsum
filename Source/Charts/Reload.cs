@@ -78,6 +78,10 @@ namespace InFalsusChartLoader_falsum
                 List<ChartPack> packs = ChartLibrary.Import(_root, ModCore.ValidateChartsOnly);
                 if (packs == null) return;
 
+                int songs = 0;
+                foreach (ChartPack pack in packs) songs += pack.Charts.Count;
+                Diagnostics.Load($"packs: {packs.Count} imported, songs: {songs} imported");
+
                 // Commit. The restore has to happen before the name admission runs: that check reads
                 // the live song table, and only a restored table holds nothing but the game's own names.
 #if DEBUG
@@ -109,9 +113,6 @@ namespace InFalsusChartLoader_falsum
                     if (pack.Charts.Count > 0) any = true;
 
                 bool applied = any ? ModCore.Register(songData, packData, packs) : true;
-
-                // Either way this pass owns the tables now; the startup path must not register again.
-                ModCore.MarkRegistered();
 
                 if (!applied)
                 {
