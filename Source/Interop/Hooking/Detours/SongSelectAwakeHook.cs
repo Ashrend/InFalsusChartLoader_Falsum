@@ -23,7 +23,8 @@ namespace InFalsusChartLoader_falsum
                                                      "ifapp.Game.Scenes");
             if (target == IntPtr.Zero)
             {
-                Diagnostics.Warn("SongSelectScene.Awake could not be resolved; a new chart needs a restart");
+                Diagnostics.Warn("SongSelectScene.Awake could not be resolved; the custom songs will " +
+                                 "not appear at all");
                 return false;
             }
 
@@ -46,7 +47,7 @@ namespace InFalsusChartLoader_falsum
             _awakeTramp = null;
         }
 
-        /// <summary>Applies a pending chart change before the page reads the tables.</summary>
+        /// <summary>The one point where the game's song table is written, before the page reads it.</summary>
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static void AwakeDetour(IntPtr self, IntPtr methodInfo)
         {
@@ -68,8 +69,8 @@ namespace InFalsusChartLoader_falsum
             IntPtr target = MethodResolver.ByRuntime("PackSelectScene", "Awake", "Game.dll", "ifapp.Game");
             if (target == IntPtr.Zero)
             {
-                Diagnostics.Warn("PackSelectScene.Awake could not be resolved; a pack added at runtime " +
-                                 "will have no card until the game is restarted");
+                Diagnostics.Warn("PackSelectScene.Awake could not be resolved; if the pack screen is " +
+                                 "opened first it will show the shipped packs only");
                 return false;
             }
 

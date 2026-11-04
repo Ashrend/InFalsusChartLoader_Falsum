@@ -2,6 +2,7 @@ PackSelectScrollContainer
 charts loaded: 
 charts reloaded: +
 the charts could not be reloaded: 
+the charts folder could not be read; the custom songs were not written this visit
 the custom songs could not be registered; the charts folder will be read again on the next visit to the song select
 the game's tables could not be copied, so nothing was added: a reload would have no clean state to go back to
 the game's tables could not be restored, so the charts were left alone; the next visit to the song select tries again

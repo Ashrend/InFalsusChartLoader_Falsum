@@ -30,6 +30,9 @@ namespace InFalsusChartLoader_falsum
         /// <summary>Whether the next commit is the first one.</summary>
         private static bool _first = true;
 
+        /// <summary>Set once waiting for the tables has failed, so a later entry does not wait again.</summary>
+        private static bool _tablesGaveUp;
+
         /// <summary>Set while a reload is running, so a second one cannot start inside it.</summary>
         private static bool _busy;
 
@@ -39,6 +42,7 @@ namespace InFalsusChartLoader_falsum
             _root = root;
             _fingerprint = null;      // nothing has been written yet
             _committed = false;
+            _first = true;
         }
 
         /// <summary>Writes the custom songs into the game's tables, if they are not there already.</summary>
@@ -51,7 +55,12 @@ namespace InFalsusChartLoader_falsum
             try
             {
                 // A folder that cannot be read is not an empty folder: keep everything as it is.
-                if (!ReloadPlan.TryFingerprint(_root, out string now)) return;
+                if (!ReloadPlan.TryFingerprint(_root, out string now))
+                {
+                    Diagnostics.WarnRelease("the charts folder could not be read; the custom songs were not written " +
+                                            "this visit");
+                    return;
+                }
 
 #if DEBUG
                 Diagnostics.Info($"song select awake: charts {(now == _fingerprint ? "unchanged" : "changed")}, " +
@@ -195,6 +204,11 @@ namespace InFalsusChartLoader_falsum
         /// </remarks>
         private static bool TryGetTables(out IntPtr songData, out IntPtr packData)
         {
+            // The tables are resolved once; a second Awake will not make them appear. Asking once
+            // without waiting keeps a later game state from being missed, without stalling every
+            // scene entry for two seconds for the rest of the session.
+            if (_tablesGaveUp) return SongCatalog.TryGetAssets(out songData, out packData);
+
             for (int attempt = 0; attempt < 200; attempt++)
             {
                 if (SongCatalog.TryGetAssets(out songData, out packData)) return true;
@@ -205,6 +219,7 @@ namespace InFalsusChartLoader_falsum
 
             songData = IntPtr.Zero;
             packData = IntPtr.Zero;
+            _tablesGaveUp = true;
             Diagnostics.Error("the game's song and pack tables did not appear; the custom songs " +
                               "were not written");
             return false;
