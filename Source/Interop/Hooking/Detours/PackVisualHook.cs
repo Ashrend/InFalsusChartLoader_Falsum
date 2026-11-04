@@ -284,12 +284,16 @@ namespace InFalsusChartLoader_falsum
             // IL2CPP's hidden trailing argument to _buildCard. A MethodInfo lives on the IL2CPP
             // heap and its address changes every run, so it cannot be cached - this target is
             // resolved afresh on every start.
+
+            // Forgotten before the lookup, not after it: if this call is ever changed to
+            // ByRuntime, the very first run must already be blocked - a guard below the call
+            // would let that run cache a code pointer where _buildCard needs a MethodInfo.
+            // The id names the image's value, not the PackImage constant, because that is what
+            // ByRuntime builds its ids from.
+            AddressCache.Forget("r:PackSongCardMember._pc@Game.dll");
+
             IntPtr info = MethodResolver.MethodInfoByRuntime(
                 "PackSongCardMember", "_pc", PackImage, PackNamespace);
-
-            // The id names the image's value, not the PackImage constant, because that is what
-            // ByRuntime builds its ids from - anything else would mark a key nothing ever asks for.
-            AddressCache.Forget("r:PackSongCardMember._pc@Game.dll");
 
             if (info == IntPtr.Zero)
             {
