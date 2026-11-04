@@ -14,15 +14,38 @@ namespace InFalsusChartLoader_falsum
         /// <summary>A method's native address by name, or zero.</summary>
         internal static IntPtr ByName(string typeName, string methodName)
         {
-            IntPtr p = ViaMethodInfo(typeName, methodName);
-            if (p != IntPtr.Zero)
+            string id = "m:" + typeName + "." + methodName;
+            return AddressCache.Code(id, id, ArityOf(typeName, methodName),
+                () => ViaMethodInfo(typeName, methodName));
+        }
+
+        /// <summary>How many parameters a method takes, or zero when it cannot be told.</summary>
+        /// <remarks>
+        /// Plain reflection over the generated interop types: it never touches IL2CPP, and the
+        /// count is only written beside the record — the cache never resolves by it.
+        /// </remarks>
+        private static int ArityOf(string typeName, string methodName)
+        {
+            try
             {
-                Diagnostics.Info($"{typeName}.{methodName} -> 0x{p.ToInt64():X} (MethodInfo)");
-                return p;
+                if (!InteropTypeIndex.ByName().TryGetValue(typeName, out List<Type> types))
+                    return 0;
+
+                foreach (Type t in types)
+                {
+                    foreach (MethodInfo mi in t.GetMethods(AnyMethod | BindingFlags.DeclaredOnly))
+                    {
+                        if (mi.Name == methodName) return mi.GetParameters().Length;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Diagnostics.Warn($"the number of parameters of {typeName}.{methodName} could not be read: " +
+                                 Diagnostics.Describe(e));
             }
 
-            Diagnostics.Error($"{typeName}.{methodName}: no method by that name in this build");
-            return IntPtr.Zero;
+            return 0;
         }
 
         /// <summary>The runtime's <c>MethodInfo</c> for a method, or zero.</summary>
@@ -59,13 +82,24 @@ namespace InFalsusChartLoader_falsum
         private static IntPtr ViaMethodInfo(string typeName, string methodName)
         {
             IntPtr info = MethodInfoOf(typeName, methodName);
-            if (info == IntPtr.Zero) return IntPtr.Zero;
+            if (info == IntPtr.Zero)
+            {
+                Diagnostics.Error($"{typeName}.{methodName}: no method by that name in this build");
+                return IntPtr.Zero;
+            }
 
             return *(IntPtr*)info;
         }
 
         /// <summary>A method's native address, reached through the runtime.</summary>
         internal static IntPtr ByRuntime(string typeName, string methodName, string image, string namespaze)
+        {
+            string id = "r:" + typeName + "." + methodName + "@" + image;
+            return AddressCache.Code(id, id, 0, () => ViaRuntime(typeName, methodName, image, namespaze));
+        }
+
+        /// <summary>The slow way to a method's native address: a walk of the runtime's class.</summary>
+        private static IntPtr ViaRuntime(string typeName, string methodName, string image, string namespaze)
         {
             IntPtr klass = ClassOf(typeName, image, namespaze);
             if (klass == IntPtr.Zero) return IntPtr.Zero;

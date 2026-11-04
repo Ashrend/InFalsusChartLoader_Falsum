@@ -54,13 +54,9 @@ namespace InFalsusChartLoader_falsum
                     klass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(ResultsImage, ResultsNamespace,
                                                                         "GameResultsV4");
 
-                IntPtr read = CustomResults.MethodOn(klass, "TryGetResult", 3);
-                IntPtr readFull = CustomResults.MethodOn(klass, "TryGetResult", 10);
-                IntPtr update = CustomResults.MethodOn(klass, "TryUpdate", 3);
-
-                IntPtr readCode = read == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)read;
-                IntPtr readFullCode = readFull == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)readFull;
-                IntPtr updateCode = update == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)update;
+                IntPtr readCode = CustomResults.MethodCode(klass, "TryGetResult", 3, "c:GameResultsV4.TryGetResult/3");
+                IntPtr readFullCode = CustomResults.MethodCode(klass, "TryGetResult", 10, "c:GameResultsV4.TryGetResult/10");
+                IntPtr updateCode = CustomResults.MethodCode(klass, "TryUpdate", 3, "c:GameResultsV4.TryUpdate/3");
 
                 if (readCode == IntPtr.Zero || readFullCode == IntPtr.Zero || updateCode == IntPtr.Zero)
                 {
@@ -107,8 +103,8 @@ namespace InFalsusChartLoader_falsum
                     encounterClass = Il2CppInterop.Runtime.IL2CPP.GetIl2CppClass(ResultsImage, ResultsNamespace,
                                                                                 "EncounterResults");
 
-                IntPtr encounter = CustomResults.MethodOn(encounterClass, "UpdateEncounterResult", 1);
-                IntPtr encounterCode = encounter == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)encounter;
+                IntPtr encounterCode = CustomResults.MethodCode(encounterClass, "UpdateEncounterResult", 1,
+                                                                 "c:EncounterResults.UpdateEncounterResult/1");
                 bool encounterOk = false;
 
                 if (encounterCode == IntPtr.Zero)

@@ -73,6 +73,11 @@ namespace InFalsusChartLoader_falsum
             Installed = installed;
             Attempted = attempted;
 
+            // The addresses resolved above are what the next start skips, so they are written
+            // down once all of them are in. Nothing is written when no target was resolved here,
+            // and nothing at all when the game module could not be keyed on.
+            AddressCache.Flush();
+
             Diagnostics.Load($"{installed}/{attempted} hooks installed");
             if (installed < attempted)
                 Diagnostics.Warn("a hook is missing; whatever it drives will silently do nothing");

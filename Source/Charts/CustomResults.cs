@@ -621,6 +621,17 @@ namespace InFalsusChartLoader_falsum
             return IntPtr.Zero;
         }
 
+        /// <summary>A method's code pointer, by name and parameter count, kept between runs.</summary>
+        internal static IntPtr MethodCode(IntPtr klass, string name, int parameters, string id)
+        {
+            return AddressCache.Code(id, id, parameters,
+                () =>
+                {
+                    IntPtr method = MethodOn(klass, name, parameters);
+                    return method == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)method;
+                });
+        }
+
         private static IntPtr Str(string text) =>
             Il2CppInterop.Runtime.IL2CPP.ManagedStringToIl2Cpp(text);
     }

@@ -280,8 +280,17 @@ namespace InFalsusChartLoader_falsum
         {
             bool row = InstallPackRow();
 
+            // This one needs the MethodInfo itself, not just the code pointer: it is passed as
+            // IL2CPP's hidden trailing argument to _buildCard. A MethodInfo lives on the IL2CPP
+            // heap and its address changes every run, so it cannot be cached - this target is
+            // resolved afresh on every start.
             IntPtr info = MethodResolver.MethodInfoByRuntime(
                 "PackSongCardMember", "_pc", PackImage, PackNamespace);
+
+            // The id names the image's value, not the PackImage constant, because that is what
+            // ByRuntime builds its ids from - anything else would mark a key nothing ever asks for.
+            AddressCache.Forget("r:PackSongCardMember._pc@Game.dll");
+
             if (info == IntPtr.Zero)
             {
                 Diagnostics.Warn("PackSongCardMember._pc could not be found; a difficulty change on the " +
