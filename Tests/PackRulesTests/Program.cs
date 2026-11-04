@@ -82,6 +82,7 @@ namespace InFalsusChartLoader_falsum.Tests
             JacketTests();
             RoutingTests();
             ReloadPlanTests();
+            CacheTests();
 
             Environment.ExitCode = _failed == 0 ? 0 : 1;
         }
@@ -388,6 +389,59 @@ namespace InFalsusChartLoader_falsum.Tests
             ReloadPlan.Compare(new List<string> { "a", "a" }, new List<string> { "a" },
                                out added, out removed);
             Check("compare treats names as a set", added == 0 && removed == 0);
+        }
+
+        private static void CacheTests()
+        {
+            const string GameId = "56802816-638000000000000";
+            const string Version = "0.5.0";
+
+            string key = AddressCacheEntries.Key(GameId, Version);
+            Check("cache key is stable", key == AddressCacheEntries.Key(GameId, Version));
+            Check("cache key follows the game", key != AddressCacheEntries.Key("other", Version));
+            Check("cache key follows the version", key != AddressCacheEntries.Key(GameId, "0.5.1"));
+            Check("cache key has both parts", key.Contains(GameId) && key.Contains(Version));
+
+            var entry = new AddressEntry
+            {
+                Id = "m:_s._VA",
+                Identity = "m:_s._VA",
+                Arity = 3,
+                Rva = 0x1234,
+                Prologue = new byte[16] { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83,
+                                         0xEC, 0x20, 0x49, 0x8B, 0xF0, 0x90, 0x90, 0x90 },
+            };
+
+            string text = AddressCacheEntries.Serialize(new List<AddressEntry> { entry });
+            Check("cache serializes one line", text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 1);
+
+            Check("cache parses back", AddressCacheEntries.TryParse(text, out List<AddressEntry> parsed) && parsed.Count == 1);
+            Check("cache round trip id", parsed[0].Id == "m:_s._VA");
+            Check("cache round trip identity", parsed[0].Identity == "m:_s._VA");
+            Check("cache round trip arity", parsed[0].Arity == 3);
+            Check("cache round trip rva", parsed[0].Rva == 0x1234);
+            Check("cache round trip prologue", parsed[0].Prologue.Length == 16 && parsed[0].Prologue[0] == 0x48);
+
+            Check("cache rejects garbage", !AddressCacheEntries.TryParse("not a cache", out _));
+            Check("cache rejects a short prologue",
+                  !AddressCacheEntries.TryParse("id\tidentity\t3\t0\t00", out _));
+            Check("cache rejects a bad arity",
+                  !AddressCacheEntries.TryParse("id\tidentity\tzz\t0\t" + new string('0', 32), out _));
+            Check("cache rejects a bad rva",
+                  !AddressCacheEntries.TryParse("id\tidentity\t3\tzz\t" + new string('0', 32), out _));
+            Check("cache rejects a tab inside a field",
+                  !AddressCacheEntries.TryParse("id\tidentity\tx\t3\t" + new string('0', 32), out _));
+
+            Check("image accepts an rva inside", AddressCacheEntries.InsideImage(0x1000, 0x2000));
+            Check("image rejects a negative rva", !AddressCacheEntries.InsideImage(-1, 0x2000));
+            Check("image rejects an rva past the end", !AddressCacheEntries.InsideImage(0x2000, 0x2000));
+
+            Check("prologue matches the same bytes", AddressCacheEntries.PrologueMatches(entry.Prologue, entry.Prologue));
+            Check("prologue rejects different bytes",
+                  !AddressCacheEntries.PrologueMatches(entry.Prologue, new byte[16]));
+            Check("prologue rejects a different length",
+                  !AddressCacheEntries.PrologueMatches(entry.Prologue, new byte[8]));
+            Check("prologue rejects null", !AddressCacheEntries.PrologueMatches(null, entry.Prologue));
         }
 
         private static string TempFolder()
