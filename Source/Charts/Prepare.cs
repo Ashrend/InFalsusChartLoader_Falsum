@@ -57,6 +57,16 @@ namespace InFalsusChartLoader_falsum
             internal bool Failed;
         }
 
+        /// <summary>What the worker produced when the folders could not be read as one state.</summary>
+        /// <remarks>
+        /// A type rather than a message on purpose: <see cref="Diagnostics.Describe"/> keeps only the
+        /// type's name in a Release build, so a message would put a diagnostic string in the artifact
+        /// that no Release log ever shows. The name is what reaches the player instead.
+        /// </remarks>
+        private sealed class FolderChangedWhileReading : Exception
+        {
+        }
+
         /// <summary>Guards the two handovers: the worker's result, and the snapshot's identity.</summary>
         private static readonly object Gate = new object();
 
@@ -295,13 +305,29 @@ namespace InFalsusChartLoader_falsum
             Diagnostics.BeginDefer();
             try
             {
+                // The folders are read over seconds, so they can change underneath the read: the pack
+                // list is then neither the old contents nor the new ones. Two prints bracket the read,
+                // and equal prints mean the read did not span a change.
+                string before = FingerprintOf(root);
+
                 round.Packs = ChartLibrary.Import(root, NeverFails);
 
-                // The print is taken after the read, on purpose: it then describes a state that was
-                // true at or after the moment the contents were read, so a change that lands later
-                // makes this snapshot look stale and it is read again. The other order could stamp
-                // contents read before a change with a print the change's revert makes look current.
-                if (ReloadPlan.TryFingerprint(root, out string fingerprint)) round.Fingerprint = fingerprint;
+                string after = FingerprintOf(root);
+
+                if (before == null || after == null || !string.Equals(before, after, StringComparison.Ordinal))
+                {
+                    // Two unreadable reads are no evidence that nothing changed, so a missing print is
+                    // refused exactly like two that disagree. The print with the time stamps in it is
+                    // what makes a change visible at all: a revert is itself a write.
+                    Diagnostics.Info(before == null || after == null
+                        ? "prepare: the charts folder could not be read before and after the import"
+                        : "prepare: the charts folder changed while it was being read");
+
+                    round.Failure = new FolderChangedWhileReading();
+                    return;
+                }
+
+                round.Fingerprint = after;
             }
             catch (Exception e)
             {
@@ -313,6 +339,14 @@ namespace InFalsusChartLoader_falsum
                 lock (Gate) Pending.Add(round);
             }
         }
+
+        /// <summary>The folders' fingerprint, or null when they cannot be read at all.</summary>
+        /// <remarks>
+        /// An empty folder that can be read gets the empty string, not null: "nothing is there" is a
+        /// state, and it is a different answer from "this could not be read".
+        /// </remarks>
+        private static string FingerprintOf(string root) =>
+            ReloadPlan.TryFingerprint(root, out string print) ? print : null;
 
         /// <summary>Accepts every song folder, so that checking can happen on the main thread.</summary>
         /// <remarks>
