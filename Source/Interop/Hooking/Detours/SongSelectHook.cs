@@ -35,7 +35,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _apply = new NativeHook<ApplyFn>
             {
                 Target = target,
@@ -43,7 +43,7 @@ namespace InFalsusChartLoader_falsum
             };
             _apply.Attach();
             _applyTramp = _apply.Trampoline;
-            Diagnostics.Info("SongSelectScene._MN hooked");
+            Diagnostics.Info("SongSelectScene._MN hooked" + Timing(_apply, prologueTicks));
             return Landed(Hook.SongSelectApply, target, prologue);
         }
 
@@ -111,7 +111,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _state = new NativeHook<DifficultyStateFn>
             {
                 Target = target,
@@ -119,7 +119,7 @@ namespace InFalsusChartLoader_falsum
             };
             _state.Attach();
             _stateTramp = _state.Trampoline;
-            Diagnostics.Info("_NH._UoA hooked");
+            Diagnostics.Info("_NH._UoA hooked" + Timing(_state, prologueTicks));
             return Landed(Hook.DifficultyState, target, prologue);
         }
 

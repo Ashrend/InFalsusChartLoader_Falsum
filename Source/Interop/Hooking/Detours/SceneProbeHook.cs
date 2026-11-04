@@ -29,7 +29,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _gate = new NativeHook<PlayGateFn>
             {
                 Target = target,
@@ -37,7 +37,7 @@ namespace InFalsusChartLoader_falsum
             };
             _gate.Attach();
             _gateTramp = _gate.Trampoline;
-            Diagnostics.Info("SongSelectScene._sN hooked");
+            Diagnostics.Info("SongSelectScene._sN hooked" + Timing(_gate, prologueTicks));
             return Landed(Hook.PlayGate, target, prologue);
         }
 
@@ -117,7 +117,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _moveNext = new NativeHook<MoveNextFn>
             {
                 Target = target,
@@ -125,7 +125,7 @@ namespace InFalsusChartLoader_falsum
             };
             _moveNext.Attach();
             _moveNextTramp = _moveNext.Trampoline;
-            Diagnostics.Info("CoreScene._CB.MoveNext hooked");
+            Diagnostics.Info("CoreScene._CB.MoveNext hooked" + Timing(_moveNext, prologueTicks));
             return Landed(Hook.SceneSwitch, target, prologue);
         }
 

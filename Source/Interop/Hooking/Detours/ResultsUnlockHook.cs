@@ -45,7 +45,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _unlockFill = new NativeHook<UnlockFillFn>
             {
                 Target = target,
@@ -53,7 +53,7 @@ namespace InFalsusChartLoader_falsum
             };
             _unlockFill.Attach();
             _unlockFillTramp = _unlockFill.Trampoline;
-            Diagnostics.Info("DifficultyUnlockContainer._GB hooked");
+            Diagnostics.Info("DifficultyUnlockContainer._GB hooked" + Timing(_unlockFill, prologueTicks));
             return Landed(Hook.ResultsUnlock, target, prologue);
         }
 

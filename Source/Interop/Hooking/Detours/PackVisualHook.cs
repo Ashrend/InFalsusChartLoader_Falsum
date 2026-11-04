@@ -99,7 +99,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _packRow = new NativeHook<PackRowFn>
             {
                 Target = target,
@@ -107,7 +107,8 @@ namespace InFalsusChartLoader_falsum
             };
             _packRow.Attach();
             _packRowTramp = _packRow.Trampoline;
-            Diagnostics.Info($"the pack row accessor is at 0x{target.ToInt64():X}");
+            Diagnostics.Info($"the pack row accessor is at 0x{target.ToInt64():X}" +
+                             Timing(_packRow, prologueTicks));
             return Landed(Hook.PackRow, target, prologue);
         }
 
@@ -315,7 +316,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _packDifficulty = new NativeHook<PackDifficultyFn>
             {
                 Target = target,
@@ -323,7 +324,7 @@ namespace InFalsusChartLoader_falsum
             };
             _packDifficulty.Attach();
             _packDifficultyTramp = _packDifficulty.Trampoline;
-            Diagnostics.Info("PackVisualMemberLarge._vc hooked");
+            Diagnostics.Info("PackVisualMemberLarge._vc hooked" + Timing(_packDifficulty, prologueTicks));
             InstallCardBinding();
             return Landed(Hook.PackVisual, target, prologue) & row;
         }
@@ -371,7 +372,7 @@ namespace InFalsusChartLoader_falsum
             _scrollLayout.Attach();
             _scrollLayoutTramp = _scrollLayout.Trampoline;
 
-            Diagnostics.Info("pack card slot binding hooked");
+            Diagnostics.Info("pack card slot binding hooked" + Timing(_smallCardBind, _scrollLayout));
             return true;
         }
 

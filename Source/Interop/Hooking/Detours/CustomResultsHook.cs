@@ -65,7 +65,7 @@ namespace InFalsusChartLoader_falsum
                     return false;
                 }
 
-                byte[] readPrologue = Prologue(readCode);
+                byte[] readPrologue = Prologue(readCode, out long readTicks);
                 _readResult = new NativeHook<ReadResultFn>
                 {
                     Target = readCode,
@@ -74,9 +74,10 @@ namespace InFalsusChartLoader_falsum
                 };
                 _readResult.Attach();
                 _readResultTramp = _readResult.Trampoline;
-                Diagnostics.Info("GameResultsV4.TryGetResult(song) hooked");
+                Diagnostics.Info("GameResultsV4.TryGetResult(song) hooked" +
+                                 Timing(_readResult, readTicks));
 
-                byte[] readFullPrologue = Prologue(readFullCode);
+                byte[] readFullPrologue = Prologue(readFullCode, out long readFullTicks);
                 _readResultFull = new NativeHook<ReadResultFullFn>
                 {
                     Target = readFullCode,
@@ -85,9 +86,10 @@ namespace InFalsusChartLoader_falsum
                 };
                 _readResultFull.Attach();
                 _readResultFullTramp = _readResultFull.Trampoline;
-                Diagnostics.Info("GameResultsV4.TryGetResult(song, full) hooked");
+                Diagnostics.Info("GameResultsV4.TryGetResult(song, full) hooked" +
+                                 Timing(_readResultFull, readFullTicks));
 
-                byte[] updatePrologue = Prologue(updateCode);
+                byte[] updatePrologue = Prologue(updateCode, out long updateTicks);
                 _updateResult = new NativeHook<UpdateResultFn>
                 {
                     Target = updateCode,
@@ -96,7 +98,7 @@ namespace InFalsusChartLoader_falsum
                 };
                 _updateResult.Attach();
                 _updateResultTramp = _updateResult.Trampoline;
-                Diagnostics.Info("GameResultsV4.TryUpdate hooked");
+                Diagnostics.Info("GameResultsV4.TryUpdate hooked" + Timing(_updateResult, updateTicks));
 
                 IntPtr encounterClass = FieldResolver.ClassPointer("EncounterResults");
                 if (encounterClass == IntPtr.Zero)
@@ -114,7 +116,7 @@ namespace InFalsusChartLoader_falsum
                 }
                 else
                 {
-                    byte[] encounterPrologue = Prologue(encounterCode);
+                    byte[] encounterPrologue = Prologue(encounterCode, out long encounterTicks);
                     _updateEncounter = new NativeHook<UpdateEncounterFn>
                     {
                         Target = encounterCode,
@@ -123,7 +125,8 @@ namespace InFalsusChartLoader_falsum
                     };
                     _updateEncounter.Attach();
                     _updateEncounterTramp = _updateEncounter.Trampoline;
-                    Diagnostics.Info("EncounterResults.UpdateEncounterResult hooked");
+                    Diagnostics.Info("EncounterResults.UpdateEncounterResult hooked" +
+                                     Timing(_updateEncounter, encounterTicks));
                     encounterOk = Landed(Hook.EncounterResult, encounterCode, encounterPrologue);
                 }
 

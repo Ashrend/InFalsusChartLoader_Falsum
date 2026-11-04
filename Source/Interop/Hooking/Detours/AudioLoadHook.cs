@@ -35,7 +35,7 @@ namespace InFalsusChartLoader_falsum
 
             CompleteRead = (delegate* unmanaged[Cdecl]<IntPtr, uint, void>)bga;
 
-            byte[] zgAPrologue = Prologue(zgA);
+            byte[] zgAPrologue = Prologue(zgA, out long zgATicks);
             _zga = new NativeHook<ZgAFn>
             {
                 Target = zgA,
@@ -43,9 +43,9 @@ namespace InFalsusChartLoader_falsum
             };
             _zga.Attach();
             _zgaTramp = _zga.Trampoline;
-            Diagnostics.Info("_J._hF._ZgA hooked");
+            Diagnostics.Info("_J._hF._ZgA hooked" + Timing(_zga, zgATicks));
 
-            byte[] djaPrologue = Prologue(dja);
+            byte[] djaPrologue = Prologue(dja, out long djaTicks);
             _dja = new NativeHook<DjaFn>
             {
                 Target = dja,
@@ -53,7 +53,7 @@ namespace InFalsusChartLoader_falsum
             };
             _dja.Attach();
             _djaTramp = _dja.Trampoline;
-            Diagnostics.Info("_BG._DJA hooked");
+            Diagnostics.Info("_BG._DJA hooked" + Timing(_dja, djaTicks));
             return Landed(Hook.AudioRead, zgA, zgAPrologue) & Landed(Hook.AudioName, dja, djaPrologue);
         }
 

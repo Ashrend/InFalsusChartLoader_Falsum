@@ -28,7 +28,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _awake = new NativeHook<AwakeFn>
             {
                 Target = target,
@@ -36,7 +36,7 @@ namespace InFalsusChartLoader_falsum
             };
             _awake.Attach();
             _awakeTramp = _awake.Trampoline;
-            Diagnostics.Info("SongSelectScene.Awake hooked");
+            Diagnostics.Info("SongSelectScene.Awake hooked" + Timing(_awake, prologueTicks));
             return Landed(Hook.SongSelectAwake, target, prologue);
         }
 
@@ -74,7 +74,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _packAwake = new NativeHook<AwakeFn>
             {
                 Target = target,
@@ -82,7 +82,7 @@ namespace InFalsusChartLoader_falsum
             };
             _packAwake.Attach();
             _packAwakeTramp = _packAwake.Trampoline;
-            Diagnostics.Info("PackSelectScene.Awake hooked");
+            Diagnostics.Info("PackSelectScene.Awake hooked" + Timing(_packAwake, prologueTicks));
             return Landed(Hook.PackSelectAwake, target, prologue);
         }
 

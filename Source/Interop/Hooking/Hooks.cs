@@ -47,7 +47,54 @@ namespace InFalsusChartLoader_falsum
         /// <c>Now</c> is absolute, so a span has to be taken before it is converted.
         /// </remarks>
         internal static double Ms(long ticks) => ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
+        /// <summary>How long each step of one native attach took.</summary>
+        /// <remarks>
+        /// <see cref="NativeHook{T}.Attach"/> fills this in. The MelonLoader branch has no separate
+        /// Dobby call and no separate delegate construction, so only <see cref="TotalMs"/> is set and
+        /// the two sub-parts stay zero there.
+        /// </remarks>
+        internal struct AttachTiming
+        {
+            /// <summary>The native inline patch (<c>Dobby.Hook</c>).</summary>
+            internal double DobbyMs;
+
+            /// <summary>Building the callable delegate over the trampoline.</summary>
+            internal double TrampolineMs;
+
+            /// <summary>The whole attach; this is the only measured number on MelonLoader.</summary>
+            internal double TotalMs;
+        }
 #endif
+
+        /// <summary>The attach timings appended to a hook line in Debug, or nothing in Release.</summary>
+        internal static string Timing<T>(NativeHook<T> hook, long prologueTicks) where T : Delegate
+        {
+#if DEBUG
+            AttachTiming timing = hook.Timing;
+            return $"  prologue={Ms(prologueTicks):F1} ms dobby={timing.DobbyMs:F1} ms " +
+                   $"trampoline={timing.TrampolineMs:F1} ms attach={timing.TotalMs:F1} ms";
+#else
+            return "";
+#endif
+        }
+
+        /// <summary>The combined attach timings for the one line that covers two hooks.</summary>
+        /// <remarks>The line follows both attaches, so the numbers are their sum; neither has a prologue read.</remarks>
+        internal static string Timing<T, U>(NativeHook<T> first, NativeHook<U> second)
+            where T : Delegate
+            where U : Delegate
+        {
+#if DEBUG
+            AttachTiming a = first.Timing;
+            AttachTiming b = second.Timing;
+            return $"  prologue=0.0 ms dobby={(a.DobbyMs + b.DobbyMs):F1} ms " +
+                   $"trampoline={(a.TrampolineMs + b.TrampolineMs):F1} ms " +
+                   $"attach={(a.TotalMs + b.TotalMs):F1} ms";
+#else
+            return "";
+#endif
+        }
 
         /// <summary>How many hooks went in, and how many were tried.</summary>
         internal static int Installed { get; private set; }
@@ -124,6 +171,24 @@ namespace InFalsusChartLoader_falsum
 
             var bytes = new byte[count];
             for (int i = 0; i < count; i++) bytes[i] = *(byte*)(target + i);
+            return bytes;
+        }
+
+        /// <summary>The first bytes at a hook target, and how many ticks the read took.</summary>
+        /// <remarks>
+        /// The ticks are a span, so <c>Ms(ticks)</c> is right. They stay zero in Release, where this
+        /// overload exists only to keep the installers' timing call sites compiling.
+        /// </remarks>
+        internal static unsafe byte[] Prologue(IntPtr target, out long ticks, int count = 8)
+        {
+            ticks = 0;
+#if DEBUG
+            long started = Now;
+#endif
+            byte[] bytes = Prologue(target, count);
+#if DEBUG
+            ticks = Now - started;
+#endif
             return bytes;
         }
 

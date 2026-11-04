@@ -14,7 +14,24 @@ namespace InFalsusChartLoader_falsum
 
         public T Trampoline => _hook.Trampoline;
 
-        public void Attach() => _hook.Attach();
+#if DEBUG
+        /// <summary>How long the whole attach took. MelonLoader has no split to report.</summary>
+        internal Hooks.AttachTiming Timing;
+#endif
+
+        public void Attach()
+        {
+#if DEBUG
+            Timing = default;
+            long started = Hooks.Now;
+#endif
+            _hook.Attach();
+#if DEBUG
+            Timing.DobbyMs = 0.0;
+            Timing.TrampolineMs = 0.0;
+            Timing.TotalMs = Hooks.Ms(Hooks.Now - started);
+#endif
+        }
 
         public void Detach() => _hook.Detach();
 #elif BEPINEX
@@ -49,14 +66,33 @@ namespace InFalsusChartLoader_falsum
 
         public T Trampoline => _trampoline;
 
+#if DEBUG
+        /// <summary>What the last <see cref="Attach"/> spent its time on.</summary>
+        internal Hooks.AttachTiming Timing;
+#endif
+
         public void Attach()
         {
+#if DEBUG
+            Timing = default;
+            long started = Hooks.Now;
+#endif
             if (_target == IntPtr.Zero || Detour == IntPtr.Zero) return;
 
             IntPtr origin;
-            if (Dobby.Hook(_target, Detour, &origin) != 0) return;
+            int patched = Dobby.Hook(_target, Detour, &origin);
+#if DEBUG
+            long patchedAt = Hooks.Now;
+            Timing.DobbyMs = Hooks.Ms(patchedAt - started);
+            Timing.TotalMs = Timing.DobbyMs;
+#endif
+            if (patched != 0) return;
 
             _trampoline = System.Runtime.InteropServices.Marshal.GetDelegateForFunctionPointer<T>(origin);
+#if DEBUG
+            Timing.TrampolineMs = Hooks.Ms(Hooks.Now - patchedAt);
+            Timing.TotalMs = Hooks.Ms(Hooks.Now - started);
+#endif
         }
 
         public void Detach()

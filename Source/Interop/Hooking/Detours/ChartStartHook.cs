@@ -18,7 +18,7 @@ namespace InFalsusChartLoader_falsum
             IntPtr target = MethodResolver.ByName("GameScene", "_rk");
             if (target == IntPtr.Zero) return false;
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _rk = new NativeHook<RkFn>
             {
                 Target = target,
@@ -26,7 +26,7 @@ namespace InFalsusChartLoader_falsum
             };
             _rk.Attach();
             _rkTramp = _rk.Trampoline;
-            Diagnostics.Info("GameScene._rk hooked");
+            Diagnostics.Info("GameScene._rk hooked" + Timing(_rk, prologueTicks));
             return Landed(Hook.ChartStart, target, prologue);
         }
 

@@ -50,7 +50,7 @@ namespace InFalsusChartLoader_falsum
             IntPtr reference = MethodResolver.ByName("SongData", "_apA");
             if (reference == IntPtr.Zero) return false;
 
-            byte[] referencePrologue = Prologue(reference);
+            byte[] referencePrologue = Prologue(reference, out long referenceTicks);
             _apa = new NativeHook<ApAFn>
             {
                 Target = reference,
@@ -58,7 +58,7 @@ namespace InFalsusChartLoader_falsum
             };
             _apa.Attach();
             _apaTramp = _apa.Trampoline;
-            Diagnostics.Info("SongData._apA hooked");
+            Diagnostics.Info("SongData._apA hooked" + Timing(_apa, referenceTicks));
 
             bool ok = Landed(Hook.JacketReference, reference, referencePrologue);
 
@@ -75,7 +75,7 @@ namespace InFalsusChartLoader_falsum
                 Diagnostics.Info($"  the method's first words: {JacketFactory.Words(load, 4)}");
 #endif
 
-                byte[] loadPrologue = Prologue(load);
+                byte[] loadPrologue = Prologue(load, out long loadTicks);
                 _mia = new NativeHook<MiaFn>
                 {
                     Target = load,
@@ -83,7 +83,7 @@ namespace InFalsusChartLoader_falsum
                 };
                 _mia.Attach();
                 _miaTramp = _mia.Trampoline;
-                Diagnostics.Info("AddressableHandleAutoReleaser._MIA hooked");
+                Diagnostics.Info("AddressableHandleAutoReleaser._MIA hooked" + Timing(_mia, loadTicks));
                 ok &= Landed(Hook.JacketMaterial, load, loadPrologue);
             }
 
@@ -105,7 +105,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _uma = new NativeHook<UmaFn>
             {
                 Target = target,
@@ -113,7 +113,7 @@ namespace InFalsusChartLoader_falsum
             };
             _uma.Attach();
             _umaTramp = _uma.Trampoline;
-            Diagnostics.Info("GameplayBackgrounds._UmA hooked");
+            Diagnostics.Info("GameplayBackgrounds._UmA hooked" + Timing(_uma, prologueTicks));
             return Landed(Hook.Background, target, prologue);
         }
 
@@ -128,7 +128,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _zoa = new NativeHook<ZoaFn>
             {
                 Target = target,
@@ -136,7 +136,7 @@ namespace InFalsusChartLoader_falsum
             };
             _zoa.Attach();
             _zoaTramp = _zoa.Trampoline;
-            Diagnostics.Info("SongData._ZOA hooked");
+            Diagnostics.Info("SongData._ZOA hooked" + Timing(_zoa, prologueTicks));
             return Landed(Hook.ChartReference, target, prologue);
         }
 
@@ -152,7 +152,7 @@ namespace InFalsusChartLoader_falsum
                 return false;
             }
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _lia = new NativeHook<LiaFn>
             {
                 Target = target,
@@ -160,7 +160,7 @@ namespace InFalsusChartLoader_falsum
             };
             _lia.Attach();
             _liaTramp = _lia.Trampoline;
-            Diagnostics.Info("AddressableHandleAutoReleaser._LIA hooked");
+            Diagnostics.Info("AddressableHandleAutoReleaser._LIA hooked" + Timing(_lia, prologueTicks));
             return Landed(Hook.ChartMaterial, target, prologue);
         }
 

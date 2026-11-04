@@ -26,7 +26,7 @@ namespace InFalsusChartLoader_falsum
             IntPtr resume = MethodResolver.ByName("_Dg", "_KiA");
             if (resume == IntPtr.Zero) return false;
 
-            byte[] pausePrologue = Prologue(pause);
+            byte[] pausePrologue = Prologue(pause, out long pauseTicks);
             _musicPause = new NativeHook<MusicPauseFn>
             {
                 Target = pause,
@@ -34,9 +34,9 @@ namespace InFalsusChartLoader_falsum
             };
             _musicPause.Attach();
             _musicPauseTramp = _musicPause.Trampoline;
-            Diagnostics.Info("_Dg._hiA hooked");
+            Diagnostics.Info("_Dg._hiA hooked" + Timing(_musicPause, pauseTicks));
 
-            byte[] resumePrologue = Prologue(resume);
+            byte[] resumePrologue = Prologue(resume, out long resumeTicks);
             _musicResume = new NativeHook<MusicResumeFn>
             {
                 Target = resume,
@@ -44,7 +44,7 @@ namespace InFalsusChartLoader_falsum
             };
             _musicResume.Attach();
             _musicResumeTramp = _musicResume.Trampoline;
-            Diagnostics.Info("_Dg._KiA hooked");
+            Diagnostics.Info("_Dg._KiA hooked" + Timing(_musicResume, resumeTicks));
             return Landed(Hook.MusicPause, pause, pausePrologue) & Landed(Hook.MusicResume, resume, resumePrologue);
         }
 

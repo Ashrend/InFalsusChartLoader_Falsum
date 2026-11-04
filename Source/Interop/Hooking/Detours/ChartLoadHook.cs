@@ -18,7 +18,7 @@ namespace InFalsusChartLoader_falsum
             IntPtr target = MethodResolver.ByName("_s", "_VA");
             if (target == IntPtr.Zero) return false;
 
-            byte[] prologue = Prologue(target);
+            byte[] prologue = Prologue(target, out long prologueTicks);
             _va = new NativeHook<VaFn>
             {
                 Target = target,
@@ -26,7 +26,7 @@ namespace InFalsusChartLoader_falsum
             };
             _va.Attach();
             _vaTramp = _va.Trampoline;
-            Diagnostics.Info("_s._VA hooked");
+            Diagnostics.Info("_s._VA hooked" + Timing(_va, prologueTicks));
             return Landed(Hook.ChartLoader, target, prologue);
         }
 
