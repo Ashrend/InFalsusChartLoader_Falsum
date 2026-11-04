@@ -42,8 +42,23 @@ namespace InFalsusChartLoader_falsum
         /// <summary>Whether the records changed since the file was written.</summary>
         private static bool _changed;
 
+#if DEBUG
+        /// <summary>Whether the file was read and its records taken: the difference between loaded and absent.</summary>
+        /// <remarks>Debug only: it exists to word the summary, and the summary is Debug only.</remarks>
+        private static bool _read;
+#endif
+
         /// <summary>The key the records belong to.</summary>
         private static string _key;
+
+        /// <summary>How many lookups a record answered: the cheap path.</summary>
+        internal static int Restored;
+
+        /// <summary>How many lookups had to call the resolver: a miss, for any reason.</summary>
+        internal static int Resolved;
+
+        /// <summary>How many records were looked at and refused: stale, out of range, or the wrong shape.</summary>
+        internal static int Rejected;
 
         /// <summary>The file the cache is kept in.</summary>
         internal static string Path
@@ -73,11 +88,15 @@ namespace InFalsusChartLoader_falsum
 
             // A target that is never cached is asked for every time: there is no point in
             // looking it up first.
-            if (NotCacheable.Contains(id)) return resolve();
-
-            if (_enabled && Records.TryGetValue(id, out AddressEntry record) && record.Identity == identity)
+            if (NotCacheable.Contains(id))
             {
-                IntPtr restored = Restore(record, arity);
+                Resolved++;
+                return resolve();
+            }
+
+            if (_enabled && Records.TryGetValue(id, out AddressEntry record))
+            {
+                IntPtr restored = Restore(record, identity, arity);
                 if (restored != IntPtr.Zero) return restored;
             }
 
@@ -85,6 +104,7 @@ namespace InFalsusChartLoader_falsum
             // more than a second, and the answer would not be any different.
             if (Unresolved.Contains(id)) return IntPtr.Zero;
 
+            Resolved++;
             IntPtr resolved = resolve();
             if (resolved == IntPtr.Zero)
             {
@@ -138,6 +158,23 @@ namespace InFalsusChartLoader_falsum
             }
 
             _changed = false;
+        }
+
+        /// <summary>What the cache did this start: one line, in the DEBUG channel.</summary>
+        /// <remarks>
+        /// Called once, after the install has asked for every address it needs. A cache that was
+        /// never read says so: an inert cache must not be printed as a working one that restored
+        /// nothing, so the status word, not the counters, carries that.
+        /// </remarks>
+        [System.Diagnostics.Conditional("DEBUG")]
+        internal static void Report()
+        {
+#if DEBUG
+            string key = string.IsNullOrEmpty(_key) ? "-" : _key;
+            Diagnostics.Info($"address cache: {(_read ? "loaded" : "absent")} key={key} " +
+                             $"records={Records.Count} restored={Restored} resolved={Resolved} " +
+                             $"rejected={Rejected}");
+#endif
         }
 
         /// <summary>Reads the file once, and remembers whether the cache is of any use.</summary>
@@ -212,30 +249,52 @@ namespace InFalsusChartLoader_falsum
             }
 
             foreach (AddressEntry record in parsed) Records[record.Id] = record;
+
+#if DEBUG
+            _read = true;
+#endif
         }
 
         /// <summary>The address a record points at, when it still points at the same code.</summary>
         /// <param name="record">The record read from the file.</param>
+        /// <param name="identity">What the caller asked for; the record has to be for the same thing.</param>
         /// <param name="arity">The parameter count the caller knows before the lookup, or zero.</param>
         /// <returns>The address, or zero when the record cannot be trusted any more.</returns>
-        private static IntPtr Restore(AddressEntry record, int arity)
+        /// <remarks>Every refusal is counted: the summary says how often the cache was looked at and turned down.</remarks>
+        private static IntPtr Restore(AddressEntry record, string identity, int arity)
         {
-            if (!AddressCacheEntries.InsideImage(record.Rva, GameAssembly.SizeOfImage)) return IntPtr.Zero;
+            if (record.Identity != identity)
+            {
+                Rejected++;
+                return IntPtr.Zero;
+            }
+
+            if (!AddressCacheEntries.InsideImage(record.Rva, GameAssembly.SizeOfImage))
+            {
+                Rejected++;
+                return IntPtr.Zero;
+            }
 
             // The arity is a cheap consistency check, not a selector: it is what the caller could
             // work out before asking, which is nothing at all for the runtime route. A record whose
             // arity disagrees was made for a different shape of the same name.
-            if (arity > 0 && record.Arity != arity) return IntPtr.Zero;
+            if (arity > 0 && record.Arity != arity)
+            {
+                Rejected++;
+                return IntPtr.Zero;
+            }
 
             IntPtr target = new IntPtr(GameAssembly.Base.ToInt64() + record.Rva);
             byte[] actual = Prologue(target);
             if (!AddressCacheEntries.PrologueMatches(record.Prologue, actual))
             {
+                Rejected++;
                 Diagnostics.Info($"the cached address of {record.Id} does not match its bytes; " +
                                  "the target is resolved again");
                 return IntPtr.Zero;
             }
 
+            Restored++;
             return target;
         }
 

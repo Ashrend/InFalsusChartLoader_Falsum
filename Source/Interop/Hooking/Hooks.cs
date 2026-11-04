@@ -41,6 +41,11 @@ namespace InFalsusChartLoader_falsum
 
         internal static long Now => System.Diagnostics.Stopwatch.GetTimestamp();
 
+        /// <summary>A tick count converted to milliseconds.</summary>
+        /// <remarks>
+        /// The argument is a number of ticks that have passed, never a timestamp:
+        /// <c>Now</c> is absolute, so a span has to be taken before it is converted.
+        /// </remarks>
         internal static double Ms(long ticks) => ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
 #endif
 
@@ -83,7 +88,10 @@ namespace InFalsusChartLoader_falsum
             AddressCache.Flush();
 
 #if DEBUG
-            Diagnostics.Info($"hooks installed in {Ms(started):F0} ms");
+            // Every address this install needed has been asked for by now, so the cache can
+            // say what it did: restored, resolved, or refused, and whether it loaded at all.
+            AddressCache.Report();
+            Diagnostics.Info($"hooks installed in {Ms(Now - started):F0} ms");
 #endif
 
             Diagnostics.Load($"{installed}/{attempted} hooks installed");

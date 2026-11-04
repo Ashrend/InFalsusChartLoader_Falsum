@@ -21,7 +21,7 @@ namespace InFalsusChartLoader_falsum
             IntPtr p = AddressCache.Code(id, id, ArityOf(typeName, methodName),
                 () => ViaMethodInfo(typeName, methodName));
 #if DEBUG
-            Diagnostics.Info($"{typeName}.{methodName} -> 0x{p.ToInt64():X} in {Hooks.Ms(started):F0} ms");
+            Diagnostics.Info($"{typeName}.{methodName} -> 0x{p.ToInt64():X} in {Hooks.Ms(Hooks.Now - started):F0} ms");
 #endif
             return p;
         }
@@ -110,7 +110,7 @@ namespace InFalsusChartLoader_falsum
 #endif
             IntPtr p = AddressCache.Code(id, id, 0, () => ViaRuntime(typeName, methodName, image, namespaze));
 #if DEBUG
-            Diagnostics.Info($"{typeName}.{methodName} -> 0x{p.ToInt64():X} in {Hooks.Ms(started):F0} ms");
+            Diagnostics.Info($"{typeName}.{methodName} -> 0x{p.ToInt64():X} in {Hooks.Ms(Hooks.Now - started):F0} ms");
 #endif
             return p;
         }
