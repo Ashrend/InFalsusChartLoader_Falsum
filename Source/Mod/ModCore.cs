@@ -48,6 +48,11 @@ namespace InFalsusChartLoader_falsum
                 // them. Until then the mod has nothing but its hooks in place.
                 Reload.Start(root);
 
+                // The folders are read on a worker thread while the game is still starting, so the
+                // songs are already there when the player reaches the song select. The worker only
+                // reads files: the check that needs the game stays on the main thread.
+                if (!string.IsNullOrEmpty(root)) Prepare.Start(root);
+
                 if (!string.IsNullOrEmpty(root)) Hooks.Install();
                 else Diagnostics.Warn("there is no charts folder to watch, so no hooks are being installed");
 
@@ -65,6 +70,13 @@ namespace InFalsusChartLoader_falsum
         internal static void Update()
         {
             VideoBackground.Follow();
+
+            // The background import is advanced before anything else can return: this is what takes a
+            // finished snapshot, flushes the log lines the worker held back, and checks a few more songs
+            // within this frame's budget. Skipping it on any early return would stall the import and
+            // lose the worker's log.
+            Prepare.Collect();
+            Prepare.ValidateSlice(Prepare.DefaultBudgetMs);
 
 #if DEBUG
             if (++_frames % 600 == 0) Diagnostics.Info("probe: counters       " + Probe.Status());

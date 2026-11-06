@@ -88,6 +88,7 @@ namespace InFalsusChartLoader_falsum.Tests
             DeferTests();
             ImageTests();
             CacheIdleTests();
+            PackCopyTests();
 
             Environment.ExitCode = _failed == 0 ? 0 : 1;
         }
@@ -566,6 +567,56 @@ namespace InFalsusChartLoader_falsum.Tests
 
             Check("the cache wrote no file", File.Exists(file) == existed);
             Check("the cache did not change the file", !existed || new FileInfo(file).Length == length);
+        }
+
+        private static void PackCopyTests()
+        {
+            // The commit path prunes the songs it was given and sorts the packs list in place. A
+            // prepared snapshot is read again on the next visit, so the copy it hands over has to
+            // be deep enough that neither of those can reach the original.
+            var song = new ChartInfo { BaseName = "song", Name = "Song" };
+            var pack = new ChartPack
+            {
+                Folder = "folder",
+                LogicalId = "id",
+                Names = new[] { "Name" },
+                Category = PackCategory.Song,
+                CoverPath = "cover.png",
+                IsLegacy = true,
+            };
+            pack.Charts.Add(song);
+
+            List<ChartPack> copy = ChartPack.CopyForCommit(new List<ChartPack> { pack });
+
+            Check("the copy has the packs", copy.Count == 1);
+            Check("the copy is a different list", !ReferenceEquals(copy, pack));
+            Check("the copy is a different pack", !ReferenceEquals(copy[0], pack));
+            Check("the copy has the songs", copy[0].Charts.Count == 1 && copy[0].Charts[0] == song);
+            Check("the copy has its own song list", !ReferenceEquals(copy[0].Charts, pack.Charts));
+
+            // What the commit does to the copy must not reach the original.
+            copy[0].Charts.RemoveAll(chart => true);
+            Check("pruning the copy leaves the original alone", pack.Charts.Count == 1);
+            copy.Sort((left, right) => right.LogicalId.CompareTo(left.LogicalId));
+            Check("sorting the copy leaves the original alone", pack.Charts.Count == 1);
+
+            // The fields the import fills in are carried over.
+            Check("the copy keeps the folder", copy[0].Folder == "folder");
+            Check("the copy keeps the logical id", copy[0].LogicalId == "id");
+            Check("the copy keeps the names", copy[0].Names != null && copy[0].Names[0] == "Name");
+            Check("the copy keeps the category", copy[0].Category == PackCategory.Song);
+            Check("the copy keeps the cover path", copy[0].CoverPath == "cover.png");
+            Check("the copy keeps the legacy flag", copy[0].IsLegacy);
+
+            // The ones the registration fills in start empty: a copy must not inherit a previous
+            // commit's ids.
+            Check("the copy has no game pack id", copy[0].GamePackId == -1);
+            Check("the copy has no visual row", copy[0].VisualRow == -1);
+            Check("the copy has no custom cover", !copy[0].HasCustomCover && copy[0].CoverMaterial == IntPtr.Zero);
+
+            // An empty list is an empty copy, not a null one.
+            Check("an empty list copies to an empty list",
+                  ChartPack.CopyForCommit(new List<ChartPack>()).Count == 0);
         }
 
         private static string TempFolder()

@@ -34,9 +34,48 @@ namespace InFalsusChartLoader_falsum
         internal int VisualRow = -1;
 
         /// <summary>Whether a custom cover was applied to this pack's visual row.</summary>
-        internal bool HasCustomCover;
+        internal bool HasCustomCover = false;
 
         /// <summary>The material built from `pack_cover.png`, or zero.</summary>
-        internal IntPtr CoverMaterial;
+        internal IntPtr CoverMaterial = IntPtr.Zero;
+
+        /// <summary>
+        /// A copy of the packs, for a caller that is allowed to change them.
+        /// </summary>
+        /// <remarks>
+        /// The commit path prunes the songs it was given and sorts the pack list in place, so a
+        /// prepared snapshot — which is read again on the next visit — cannot be handed over
+        /// directly: a song the game refused once would never come back until the folder changed.
+        /// <para>
+        /// The copy is therefore deep: a new list, a new pack per entry, and a new song list per
+        /// pack. The songs themselves are shared, because nothing changes a song after it is
+        /// imported and a chart's bytes are worth keeping in one place.
+        /// </para>
+        /// <para>
+        /// The four fields the registration fills in — the game's ids and the cover material — are
+        /// not carried over: they belong to one registration, and a copy has not been registered.
+        /// </para>
+        /// </remarks>
+        internal static List<ChartPack> CopyForCommit(List<ChartPack> packs)
+        {
+            var copy = new List<ChartPack>(packs.Count);
+            foreach (ChartPack pack in packs)
+            {
+                var one = new ChartPack
+                {
+                    Folder = pack.Folder,
+                    LogicalId = pack.LogicalId,
+                    Names = pack.Names,
+                    Category = pack.Category,
+                    CoverPath = pack.CoverPath,
+                    IsLegacy = pack.IsLegacy,
+                };
+
+                one.Charts.AddRange(pack.Charts);
+                copy.Add(one);
+            }
+
+            return copy;
+        }
     }
 }

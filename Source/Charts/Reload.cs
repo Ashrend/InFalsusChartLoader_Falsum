@@ -53,6 +53,7 @@ namespace InFalsusChartLoader_falsum
             _busy = true;
             bool committed = false;
             bool defer = false;
+            bool restart = false;
             try
             {
                 // A folder that cannot be read is not an empty folder: keep everything as it is.
@@ -85,8 +86,33 @@ namespace InFalsusChartLoader_falsum
 
                 // Prepare: read and check every folder. Nothing has been written yet, so a failure here
                 // leaves the songs that are already registered exactly as they are.
-                List<ChartPack> packs = ChartLibrary.Import(_root, ModCore.ValidateChartsOnly);
-                if (packs == null) return;
+                //
+                // The background worker may have finished reading the folders while the player was
+                // in the menu: if it has, its snapshot is used and the songs are already checked. If
+                // it has not, the folders are read here instead, and the check runs as part of the
+                // import - the same work, on the main thread, exactly as it was before.
+                Prepare.Collect();
+
+                bool prepared = Prepare.HasSnapshot && Prepare.Fingerprint == now;
+
+                List<ChartPack> packs;
+                if (prepared)
+                {
+                    // Whatever the frame loop did not reach yet is finished here, synchronously: a
+                    // player who arrives early still gets their songs, exactly as they would have
+                    // before the import moved off the entry path.
+                    Prepare.ValidateAll();
+
+                    // The commit prunes the songs it is given and sorts the packs list in place, so
+                    // it gets a copy: the snapshot is read again on the next visit, and a song the
+                    // game refused once would otherwise never come back.
+                    packs = ChartPack.CopyForCommit(Prepare.Packs);
+                }
+                else
+                {
+                    packs = ChartLibrary.Import(_root, ModCore.ValidateChartsOnly);
+                    if (packs == null) return;
+                }
 
                 int songs = 0;
                 foreach (ChartPack pack in packs) songs += pack.Charts.Count;
@@ -182,6 +208,11 @@ namespace InFalsusChartLoader_falsum
                 // threw halfway, and by now there is nothing left to undo. An attach that throws
                 // must cost its own tier, not the tables this method has just written.
                 defer = true;
+
+                // The folders were read on the main thread, so the snapshot this commit used - if
+                // any - is stale: it describes the folders as they were before this read. A fresh
+                // round is prepared for the next visit, so that one finds the songs already read.
+                restart = !prepared;
             }
             catch (Exception e)
             {
@@ -203,6 +234,12 @@ namespace InFalsusChartLoader_falsum
             }
 
             if (!defer) return;
+
+            // The next round of reading is prepared here, outside the try for the same reason the
+            // deferred hooks are: the catch exists to undo a commit that threw halfway, and by now
+            // the tables this method has just written are not to be undone because starting a
+            // background read failed.
+            if (restart) Prepare.Start(_root);
 
             // The rest of the hooks are installed here, after the tables have been written: a start
             // that fails before this point leaves them uninstalled, which is correct, because

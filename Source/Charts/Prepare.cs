@@ -212,6 +212,8 @@ namespace InFalsusChartLoader_falsum
         /// <summary>Checks a little more of the prepared songs, within <paramref name="budgetMs"/>.</summary>
         /// <remarks>
         /// Main thread only, and it must not be called while the game builds a page from the tables.
+        /// This decodes and prunes only: the pictures are built by the commit, not here, because the
+        /// commit resets the picture catalogs before it rebuilds them.
         /// </remarks>
         /// <returns>True when every song has been checked and the failed ones pruned.</returns>
         internal static bool ValidateSlice(long budgetMs)
@@ -238,14 +240,11 @@ namespace InFalsusChartLoader_falsum
 
                 if (check.Failed || check.Difficulty >= ChartInfo.Difficulties)
                 {
-                    // The song is done: build the pictures it draws with, then let it go. A song that
-                    // failed is dropped without building anything — nothing will read its pictures.
-                    if (!check.Failed)
-                    {
-                        JacketCatalog.Add(check.Info, out _);
-                        BackgroundCatalog.Add(check.Info, out _);
-                    }
-
+                    // Deliberately build nothing here: Reload.Commit resets the jacket and background
+                    // catalogs before ModCore.Register rebuilds the pictures, so anything built during
+                    // the check would be thrown away and its texture work paid twice. The check's job is
+                    // the decode; the pictures stay with Register, the one place that also knows which
+                    // songs survived name and audio admission.
                     _at++;
                 }
                 else
