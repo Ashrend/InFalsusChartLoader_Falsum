@@ -91,6 +91,7 @@ namespace InFalsusChartLoader_falsum.Tests
             PackCopyTests();
             ChartCheckTests();
             PrepareTests();
+            PrepareCheckTests();
 
             Environment.ExitCode = _failed == 0 ? 0 : 1;
         }
@@ -651,30 +652,105 @@ namespace InFalsusChartLoader_falsum.Tests
                 // nothing - during the song, at the game's frame rate.
                 var reached = new ManualResetEventSlim(false);
                 var gate = new ManualResetEventSlim(false);
+                bool flushed = false;
+                Diagnostics.TestLine = line => { if (line == "the round landed") flushed = true; };
 
-                Prepare.Start(root, r => { reached.Set(); gate.Wait(); return new List<ChartPack> { pack }; }, decode);
+                Prepare.Start(root, r =>
+                {
+                    reached.Set();
+                    gate.Wait();
+                    Diagnostics.Load("the round landed");
+                    return new List<ChartPack> { pack };
+                }, decode);
+
                 Check("the worker reached the folders", reached.Wait(5000));
 
                 Prepare.Reset();
                 gate.Set();
 
-                // The worker is finished, but nothing says so any more: the reset superseded the
-                // round it was reading, so it no longer counts as the round being read. The wait
-                // is therefore generous - a round that landed and were adopted would make the
-                // check below fail, and one that had not landed yet would make it pass for the
-                // wrong reason.
-                for (int i = 0; i < 100 && !Prepare.HasSnapshot; i++)
+                // The worker's own log line is written out when the round is taken, so seeing it
+                // means the round really landed and was collected - not that the wait was too
+                // short and nothing had arrived yet.
+                for (int i = 0; i < 500 && !flushed; i++)
                 {
                     Prepare.Collect();
                     Thread.Sleep(10);
                 }
 
+                Check("the late round was collected", flushed);
                 Check("a round that lands after a reset is not adopted", !Prepare.HasSnapshot);
+            }
+            finally
+            {
+                Diagnostics.TestLine = null;
+                Directory.Delete(root, true);
+            }
+        }
+
+        private static void PrepareCheckTests()
+        {
+            string root = TempFolder();
+            try
+            {
+                File.WriteAllText(Path.Combine(root, "if"), "{}");
+
+                var good = Song("good");
+                var bad = Song("bad");
+                var worse = Song("worse");
+
+                var packA = new ChartPack { LogicalId = "a" };
+                packA.Charts.Add(good);
+                packA.Charts.Add(bad);
+
+                var packB = new ChartPack { LogicalId = "b" };
+                packB.Charts.Add(worse);
+
+                // The decoder is the game's own code, and a corrupt chart makes it throw. The
+                // throw used to repeat on every frame, because the difficulty never advanced past
+                // it: the check has to move on to the next difficulty and come back later.
+                ChartDecoder decode = (byte[] bytes, string seed, IntPtr tuple, out string reason) =>
+                {
+                    if (seed != "good") throw new InvalidOperationException("boom");
+                    reason = null;
+                    return true;
+                };
+
+                Prepare.Reset();
+                Prepare.Start(root, r => new List<ChartPack> { packA, packB }, decode);
+                WaitForPrepare();
+                Prepare.Collect();
+
+                // The frame loop: one piece per call, and a decoder that throws does not stop it.
+                int calls = 0;
+                while (!Prepare.ValidateSlice(0) && calls < 50) calls++;
+
+                Check("the check makes progress on every frame", calls > 0 && calls < 50);
+                Check("the check is finished", Prepare.Ready);
+
+                // The songs that failed are gone, and the pack they leave empty is gone too.
+                Check("the refused songs are pruned",
+                      Prepare.Packs.Count == 1 && Prepare.Packs[0].Charts.Count == 1);
+                Check("the pack left empty is removed", Prepare.Packs.TrueForAll(pack => pack.Charts.Count > 0));
+                Check("the song that passed is kept", Prepare.Packs[0].Charts[0].BaseName == "good");
             }
             finally
             {
                 Directory.Delete(root, true);
             }
+        }
+
+        /// <summary>A song with a chart in every difficulty, named after itself.</summary>
+        private static ChartInfo Song(string name)
+        {
+            return new ChartInfo
+            {
+                BaseName = name,
+                FolderName = name,
+                NoChart = new bool[ChartInfo.Difficulties],
+                ChartPaths = new[] { name, name, name, name },
+                ChartNames = new[] { name, name, name, name },
+                ChartBytes = new[] { new byte[] { 1 }, new byte[] { 2 }, new byte[] { 3 }, new byte[] { 4 } },
+            };
         }
 
         private static void WaitForPrepare()

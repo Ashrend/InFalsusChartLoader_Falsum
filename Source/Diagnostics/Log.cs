@@ -7,6 +7,11 @@ namespace InFalsusChartLoader_falsum
     /// <summary>The mod's logging: Debug-only narration, and the lines a Release keeps.</summary>
     internal static class Diagnostics
     {
+#if TESTS
+        /// <summary>The rule tests watch the log through this; nothing is written anywhere.</summary>
+        internal static Action<string> TestLine;
+#endif
+
         /// <summary>The loader's log sink.</summary>
         private static class Sink
         {
@@ -22,9 +27,9 @@ namespace InFalsusChartLoader_falsum
             internal static void Error(string message) => Source.LogError(message);
             internal static void Warning(string message) => Source.LogWarning(message);
 #elif TESTS
-            internal static void Msg(string message) { }
-            internal static void Error(string message) { }
-            internal static void Warning(string message) { }
+            internal static void Msg(string message) => Diagnostics.TestLine?.Invoke(message);
+            internal static void Error(string message) => Diagnostics.TestLine?.Invoke(message);
+            internal static void Warning(string message) => Diagnostics.TestLine?.Invoke(message);
 #else
 #error Define MELONLOADER or BEPINEX.
 #endif

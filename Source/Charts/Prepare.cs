@@ -150,8 +150,8 @@ namespace InFalsusChartLoader_falsum
         /// <summary>The snapshot's packs, or null when there is no snapshot. Main thread only.</summary>
         /// <remarks>
         /// These are the objects the import produced, not a copy: a caller that is allowed to change
-        /// them must take a copy first. The commit prunes the songs it is given, and the snapshot is
-        /// read again on the next visit.
+        /// them must take a copy first. The commit prunes the songs it is given, and a commit that
+        /// failed is retried on the next visit.
         /// </remarks>
         internal static List<ChartPack> Packs
         {
@@ -164,8 +164,8 @@ namespace InFalsusChartLoader_falsum
         /// <summary>Starts reading the folders in the background; a round already being read is left alone.</summary>
         /// <remarks>
         /// The reading and the checking are handed in rather than reached for, so that this module
-        /// depends on nothing but the game's own types: the rule tests can then drive a whole round
-        /// — adopt, check, prune, reset — without a game and without a charts folder.
+        /// depends on nothing but the mod's own managed types: the rule tests can then drive a
+        /// whole round — adopt, check, prune, reset — without a game and without a charts folder.
         /// </remarks>
         internal static void Start(string root, Func<string, List<ChartPack>> import, ChartDecoder decode)
         {
@@ -427,7 +427,7 @@ namespace InFalsusChartLoader_falsum
         {
             if (ChartCheck.Try(info, difficulty, _decode, out string reason)) return true;
 
-            Diagnostics.Warn($"'{info.FolderName}' difficulty {difficulty} was refused: {reason}");
+            Diagnostics.Warn($"'{info.FolderName}' was refused: {reason}");
             return false;
         }
     }

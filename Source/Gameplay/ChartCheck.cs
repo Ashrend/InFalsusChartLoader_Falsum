@@ -17,9 +17,11 @@ namespace InFalsusChartLoader_falsum
         /// <summary>Checks one difficulty, and turns a decoder that throws into a refusal.</summary>
         /// <remarks>
         /// A chart is user data, and the decoder is the game's own code reached through a native
-        /// call: a file that is not what it claims to be can make it throw. That is a refusal of
-        /// this difficulty, not a crash — the song is skipped, and the frame loop does not come
-        /// back to it on every frame.
+        /// call: a file that is not what it claims to be can make it throw — a corrupt note count
+        /// makes <c>ChartDecryptor.Overwrite</c> allocate an array of the wrong size, for instance.
+        /// A managed throw like that is a refusal of this difficulty, not a crash: the song is
+        /// skipped, and the frame loop does not come back to it on every frame. A fault inside the
+        /// game's own native code is not catchable here, and was not before either.
         /// </remarks>
         /// <param name="info">The song the difficulty belongs to.</param>
         /// <param name="difficulty">The difficulty to check.</param>
