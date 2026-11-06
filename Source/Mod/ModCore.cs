@@ -26,7 +26,7 @@ namespace InFalsusChartLoader_falsum
             Diagnostics.Load("InFalsusChartLoader_falsum loading...");
         }
 
-        /// <summary>Installs the hooks; the folders are imported when the tables are written.</summary>
+        /// <summary>Installs the hooks, and starts the background read of the folders.</summary>
         internal static void Initialize()
         {
             try
@@ -43,15 +43,16 @@ namespace InFalsusChartLoader_falsum
                 string root = ChartLibrary.Locate();
                 Diagnostics.Info($"charts folder: {root}");
 
-                // The import and the injection are deliberately not done here: the game's tables
-                // are written from the song select, which is the only moment it is safe to touch
-                // them. Until then the mod has nothing but its hooks in place.
+                // The tables are written from the song select, which is the only moment it is safe to
+                // touch them. Until then the mod has nothing but its hooks in place - and the
+                // folders, read on a worker thread.
                 Reload.Start(root);
 
                 // The folders are read on a worker thread while the game is still starting, so the
                 // songs are already there when the player reaches the song select. The worker only
                 // reads files: the check that needs the game stays on the main thread.
-                if (!string.IsNullOrEmpty(root)) Prepare.Start(root);
+                if (!string.IsNullOrEmpty(root))
+                    Prepare.Start(root, r => ChartLibrary.Import(r, Prepare.NeverFails), ChartCodec.Decoder);
 
                 if (!string.IsNullOrEmpty(root)) Hooks.Install();
                 else Diagnostics.Warn("there is no charts folder to watch, so no hooks are being installed");
@@ -273,39 +274,16 @@ namespace InFalsusChartLoader_falsum
         /// <remarks>
         /// The reload calls this while it is still deciding: a folder that fails here never reaches the
         /// commit, so nothing half-read is registered. Pictures are built later, by <see cref="Register"/>.
+        /// <para>
+        /// The check itself is <see cref="ChartCheck"/>, the same code the background preparation uses,
+        /// so a chart that one admits is admitted here too.
+        /// </para>
         /// </remarks>
         internal static string ValidateChartsOnly(ChartInfo info)
         {
-            byte[] scratch = new byte[32];
             for (int d = 0; d < ChartInfo.Difficulties; d++)
             {
-                if (info.NoChart[d]) continue;
-
-                string path = info.ChartPaths[d];
-
-                string seed = info.ChartNames[d];
-
-                byte[] bytes = info.ChartBytes != null ? info.ChartBytes[d] : null;
-                if (bytes == null)
-                {
-                    try
-                    {
-                        bytes = System.IO.File.ReadAllBytes(path);
-                    }
-                    catch (Exception e)
-                    {
-                        return $"difficulty {d} could not be read: {Diagnostics.Describe(e)}";
-                    }
-                }
-
-                unsafe
-                {
-                    fixed (byte* tuple = scratch)
-                    {
-                        if (!ChartCodec.TryDecode(bytes, seed, (IntPtr)tuple, out string reason))
-                            return $"difficulty {d}: {reason}";
-                    }
-                }
+                if (!ChartCheck.Try(info, d, ChartCodec.Decoder, out string reason)) return reason;
             }
 
             return null;

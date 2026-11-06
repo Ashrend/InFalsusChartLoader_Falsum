@@ -7,6 +7,7 @@
     <Nullable>disable</Nullable>
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>PackRulesTests</AssemblyName>
     <DefineConstants>$(DefineConstants);TESTS</DefineConstants>
   </PropertyGroup>
@@ -14,6 +15,8 @@
     <Compile Include="..\..\Source\Charts\PackManifest.cs" Link="PackManifest.cs" />
     <Compile Include="..\..\Source\Charts\ChartInfo.cs" Link="ChartInfo.cs" />
     <Compile Include="..\..\Source\Charts\ChartPack.cs" Link="ChartPack.cs" />
+    <Compile Include="..\..\Source\Gameplay\ChartCheck.cs" Link="ChartCheck.cs" />
+    <Compile Include="..\..\Source\Charts\Prepare.cs" Link="Prepare.cs" />
     <Compile Include="..\..\Source\Charts\IfOverlay.cs" Link="IfOverlay.cs" />
     <Compile Include="..\..\Source\Charts\ChartInfoReader.cs" Link="ChartInfoReader.cs" />
     <Compile Include="..\..\Source\Charts\FalsumReader.cs" Link="FalsumReader.cs" />

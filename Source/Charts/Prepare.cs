@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Threading.Tasks;
 
 namespace InFalsusChartLoader_falsum
@@ -100,6 +99,9 @@ namespace InFalsusChartLoader_falsum
         /// <summary>Whether the check has finished and the failed songs have been pruned.</summary>
         private static bool _ready;
 
+        /// <summary>The decoder the check uses; set when a round is started.</summary>
+        private static ChartDecoder _decode;
+
         /// <summary>Whether a worker is still reading the folders for the current round.</summary>
         internal static bool Running
         {
@@ -147,8 +149,9 @@ namespace InFalsusChartLoader_falsum
 
         /// <summary>The snapshot's packs, or null when there is no snapshot. Main thread only.</summary>
         /// <remarks>
-        /// These are the objects the import produced, not a copy: a caller that removes songs from them
-        /// removes them from the snapshot, which is what the commit does when the game refuses a song.
+        /// These are the objects the import produced, not a copy: a caller that is allowed to change
+        /// them must take a copy first. The commit prunes the songs it is given, and the snapshot is
+        /// read again on the next visit.
         /// </remarks>
         internal static List<ChartPack> Packs
         {
@@ -159,7 +162,12 @@ namespace InFalsusChartLoader_falsum
         }
 
         /// <summary>Starts reading the folders in the background; a round already being read is left alone.</summary>
-        internal static void Start(string root)
+        /// <remarks>
+        /// The reading and the checking are handed in rather than reached for, so that this module
+        /// depends on nothing but the game's own types: the rule tests can then drive a whole round
+        /// — adopt, check, prune, reset — without a game and without a charts folder.
+        /// </remarks>
+        internal static void Start(string root, Func<string, List<ChartPack>> import, ChartDecoder decode)
         {
             lock (Gate)
             {
@@ -171,7 +179,8 @@ namespace InFalsusChartLoader_falsum
                 ResetLocked();
                 int number = _round;
                 _workerRound = number;
-                _worker = Task.Run(() => Import(root, number));
+                _decode = decode;
+                _worker = Task.Run(() => Import(root, number, import));
             }
         }
 
@@ -297,7 +306,7 @@ namespace InFalsusChartLoader_falsum
         }
 
         /// <summary>Reads the folders, on a worker thread. Never touches the game, never writes the log.</summary>
-        private static void Import(string root, int number)
+        private static void Import(string root, int number, Func<string, List<ChartPack>> import)
         {
             var round = new Round { Number = number };
 
@@ -309,7 +318,7 @@ namespace InFalsusChartLoader_falsum
                 // and equal prints mean the read did not span a change.
                 string before = FingerprintOf(root);
 
-                round.Packs = ChartLibrary.Import(root, NeverFails);
+                round.Packs = import(root);
 
                 string after = FingerprintOf(root);
 
@@ -349,11 +358,12 @@ namespace InFalsusChartLoader_falsum
 
         /// <summary>Accepts every song folder, so that checking can happen on the main thread.</summary>
         /// <remarks>
-        /// Deliberately not <see cref="ModCore.ValidateChartsOnly"/>: that decodes every chart with the
-        /// game's own decoder, and a game call on a worker thread would crash or freeze the game in a way
-        /// that is very hard to reproduce. Rejection happens in <see cref="ValidateSlice"/> instead.
+        /// The background read only reads: a folder is not refused here, because refusing it means
+        /// calling the game's decoder, and a game call on a worker thread would crash or freeze the
+        /// game in a way that is very hard to reproduce. Rejection happens in the check instead, on
+        /// the main thread.
         /// </remarks>
-        private static string NeverFails(ChartInfo info) => null;
+        internal static string NeverFails(ChartInfo info) => null;
 
         /// <summary>Turns one round's result into the snapshot and the queue of songs to check.</summary>
         private static void Adopt(Round round)
@@ -408,45 +418,17 @@ namespace InFalsusChartLoader_falsum
 
         /// <summary>Decodes one difficulty with the game's own decoder. Main thread only.</summary>
         /// <remarks>
-        /// This is <see cref="ModCore.ValidateChartsOnly"/>'s body, one difficulty at a time: a difficulty
-        /// with no chart is skipped, the bytes a <c>.falsum</c> was compiled into are preferred over the
-        /// file on disk, and the decoder fills a 32-byte tuple. The two places must keep agreeing, or a
-        /// chart would load through one of them and not the other.
+        /// This is the import's check, one difficulty at a time: <see cref="ChartCheck"/> is the same
+        /// code the import uses, so a chart that loads through one of them loads through the other.
+        /// The two places must keep agreeing, or a song would be admitted by one and refused by the
+        /// other.
         /// </remarks>
-        private static unsafe bool Decode(ChartInfo info, int difficulty)
+        private static bool Decode(ChartInfo info, int difficulty)
         {
-            if (info.NoChart[difficulty]) return true;
+            if (ChartCheck.Try(info, difficulty, _decode, out string reason)) return true;
 
-            string path = info.ChartPaths[difficulty];
-            string seed = info.ChartNames[difficulty];
-
-            byte[] bytes = info.ChartBytes != null ? info.ChartBytes[difficulty] : null;
-            if (bytes == null)
-            {
-                try
-                {
-                    bytes = File.ReadAllBytes(path);
-                }
-                catch (Exception e)
-                {
-                    Diagnostics.Warn($"'{info.FolderName}' difficulty {difficulty} could not be read: " +
-                                     Diagnostics.Describe(e));
-                    return false;
-                }
-            }
-
-            bool decoded;
-            string reason;
-            byte[] scratch = new byte[32];       // the tuple the decoder fills in
-            fixed (byte* tuple = scratch)
-            {
-                decoded = ChartCodec.TryDecode(bytes, seed, (IntPtr)tuple, out reason);
-            }
-
-            if (!decoded)
-                Diagnostics.Warn($"'{info.FolderName}' difficulty {difficulty} was refused: {reason}");
-
-            return decoded;
+            Diagnostics.Warn($"'{info.FolderName}' difficulty {difficulty} was refused: {reason}");
+            return false;
         }
     }
 }

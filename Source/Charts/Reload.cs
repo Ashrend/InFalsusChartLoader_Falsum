@@ -12,8 +12,8 @@ namespace InFalsusChartLoader_falsum
     /// loop, a scene switch — could land in the middle of a running song. Whichever wakes first
     /// does the work; the other is a fingerprint no-op.
     /// <para>
-    /// The first visit writes everything: the startup path deliberately imports nothing,
-    /// so until this runs there are no custom songs in the game's tables.
+    /// The first visit writes everything: the startup path only reads the folders in the
+    /// background, so until this runs there are no custom songs in the game's tables.
     /// </para>
     /// </remarks>
     internal static class Reload
@@ -53,7 +53,6 @@ namespace InFalsusChartLoader_falsum
             _busy = true;
             bool committed = false;
             bool defer = false;
-            bool restart = false;
             try
             {
                 // A folder that cannot be read is not an empty folder: keep everything as it is.
@@ -104,8 +103,8 @@ namespace InFalsusChartLoader_falsum
                     Prepare.ValidateAll();
 
                     // The commit prunes the songs it is given and sorts the packs list in place, so
-                    // it gets a copy: the snapshot is read again on the next visit, and a song the
-                    // game refused once would otherwise never come back.
+                    // it gets a copy: a commit that fails is retried on the next visit, and the
+                    // retry must not find the songs already pruned.
                     packs = ChartPack.CopyForCommit(Prepare.Packs);
                 }
                 else
@@ -208,11 +207,6 @@ namespace InFalsusChartLoader_falsum
                 // threw halfway, and by now there is nothing left to undo. An attach that throws
                 // must cost its own tier, not the tables this method has just written.
                 defer = true;
-
-                // The folders were read on the main thread, so the snapshot this commit used - if
-                // any - is stale: it describes the folders as they were before this read. A fresh
-                // round is prepared for the next visit, so that one finds the songs already read.
-                restart = !prepared;
             }
             catch (Exception e)
             {
@@ -235,11 +229,14 @@ namespace InFalsusChartLoader_falsum
 
             if (!defer) return;
 
-            // The next round of reading is prepared here, outside the try for the same reason the
-            // deferred hooks are: the catch exists to undo a commit that threw halfway, and by now
-            // the tables this method has just written are not to be undone because starting a
-            // background read failed.
-            if (restart) Prepare.Start(_root);
+            // The snapshot is spent. The tables now hold what it described, and a round that lands
+            // from here on would only be checked again for nothing - during the song, at the game's
+            // frame rate. Dropping it also drops any round still being read: its result describes
+            // folders this commit has already been given.
+            //
+            // A commit that failed keeps its snapshot instead: the next visit retries with it, and
+            // with a copy of it, rather than reading the folders a second time.
+            Prepare.Reset();
 
             // The rest of the hooks are installed here, after the tables have been written: a start
             // that fails before this point leaves them uninstalled, which is correct, because

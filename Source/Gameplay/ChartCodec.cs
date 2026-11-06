@@ -17,6 +17,9 @@ namespace InFalsusChartLoader_falsum
         /// <summary>The upper bound on a note time, in milliseconds.</summary>
         private const int MaxChartMs = 3_600_000;
 
+        /// <summary>The game's decoder, as the seam the chart check goes through.</summary>
+        internal static readonly ChartDecoder Decoder = TryDecode;
+
         /// <summary>Finds the decoder and the empty-chart constructor.</summary>
         internal static bool Resolve()
         {

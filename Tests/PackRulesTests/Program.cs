@@ -89,6 +89,8 @@ namespace InFalsusChartLoader_falsum.Tests
             ImageTests();
             CacheIdleTests();
             PackCopyTests();
+            ChartCheckTests();
+            PrepareTests();
 
             Environment.ExitCode = _failed == 0 ? 0 : 1;
         }
@@ -567,6 +569,117 @@ namespace InFalsusChartLoader_falsum.Tests
 
             Check("the cache wrote no file", File.Exists(file) == existed);
             Check("the cache did not change the file", !existed || new FileInfo(file).Length == length);
+        }
+
+        private static void ChartCheckTests()
+        {
+            var info = new ChartInfo
+            {
+                FolderName = "song",
+                NoChart = new bool[ChartInfo.Difficulties],
+                ChartPaths = new[] { "a", "b", "c", "d" },
+                ChartNames = new[] { "a", "b", "c", "d" },
+                ChartBytes = new[] { new byte[] { 1 }, new byte[] { 2 }, new byte[] { 3 }, new byte[] { 4 } },
+            };
+
+            // The decoder is the game's own code: a corrupt chart can make it throw. A throw that
+            // escapes the check reaches the frame loop, where the same chart is tried again on every
+            // frame, for ever. A chart that cannot be decoded must be refused instead.
+            Check("a chart that decodes is accepted",
+                  ChartCheck.Try(info, 0, DecodeOk, out string good) && good == null);
+
+            Check("a chart that is refused says why",
+                  !ChartCheck.Try(info, 0, DecodeNo, out string refused) && refused == "difficulty 0: no");
+
+            bool fatal = false;
+            string thrown = null;
+            try
+            {
+                ChartCheck.Try(info, 0, DecodeThrows, out thrown);
+            }
+            catch (Exception)
+            {
+                fatal = true;
+            }
+
+            Check("a decoder that throws is refused, not fatal", !fatal);
+            Check("a decoder that throws says what threw",
+                  thrown != null && thrown.Contains("InvalidOperationException"));
+
+            // A difficulty with no chart is nothing to decode.
+            var bare = new ChartInfo { NoChart = new bool[ChartInfo.Difficulties] };
+            bare.NoChart[0] = true;
+            Check("a difficulty with no chart is not decoded",
+                  ChartCheck.Try(bare, 0, DecodeNo, out string none) && none == null);
+        }
+
+        private static readonly ChartDecoder DecodeOk =
+            (byte[] bytes, string seed, IntPtr tuple, out string reason) => { reason = null; return true; };
+
+        private static readonly ChartDecoder DecodeNo =
+            (byte[] bytes, string seed, IntPtr tuple, out string reason) => { reason = "no"; return false; };
+
+        private static readonly ChartDecoder DecodeThrows =
+            (byte[] bytes, string seed, IntPtr tuple, out string reason) =>
+                throw new InvalidOperationException("boom");
+
+        private static void PrepareTests()
+        {
+            string root = TempFolder();
+            try
+            {
+                File.WriteAllText(Path.Combine(root, "if"), "{}");
+
+                var song = new ChartInfo { BaseName = "song", FolderName = "song", NoChart = new bool[ChartInfo.Difficulties] };
+                var pack = new ChartPack { LogicalId = "id" };
+                pack.Charts.Add(song);
+
+                ChartDecoder decode = DecodeOk;
+
+                Prepare.Start(root, r => new List<ChartPack> { pack }, decode);
+                WaitForPrepare();
+                Prepare.Collect();
+
+                Check("a finished round is adopted", Prepare.HasSnapshot);
+                Check("the snapshot holds the songs", Prepare.Packs != null && Prepare.Packs.Count == 1);
+
+                Prepare.Reset();
+                Check("a reset drops the snapshot", !Prepare.HasSnapshot && Prepare.Packs == null);
+
+                // A round that lands after the reset must not be adopted: the song select has
+                // already been written, and the songs it holds would only be checked again for
+                // nothing - during the song, at the game's frame rate.
+                var reached = new ManualResetEventSlim(false);
+                var gate = new ManualResetEventSlim(false);
+
+                Prepare.Start(root, r => { reached.Set(); gate.Wait(); return new List<ChartPack> { pack }; }, decode);
+                Check("the worker reached the folders", reached.Wait(5000));
+
+                Prepare.Reset();
+                gate.Set();
+
+                // The worker is finished, but nothing says so any more: the reset superseded the
+                // round it was reading, so it no longer counts as the round being read. The wait
+                // is therefore generous - a round that landed and were adopted would make the
+                // check below fail, and one that had not landed yet would make it pass for the
+                // wrong reason.
+                for (int i = 0; i < 100 && !Prepare.HasSnapshot; i++)
+                {
+                    Prepare.Collect();
+                    Thread.Sleep(10);
+                }
+
+                Check("a round that lands after a reset is not adopted", !Prepare.HasSnapshot);
+            }
+            finally
+            {
+                Directory.Delete(root, true);
+            }
+        }
+
+        private static void WaitForPrepare()
+        {
+            for (int i = 0; i < 500 && Prepare.Running; i++) Thread.Sleep(10);
         }
 
         private static void PackCopyTests()
