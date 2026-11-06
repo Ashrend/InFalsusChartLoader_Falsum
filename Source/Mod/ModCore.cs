@@ -15,6 +15,9 @@ namespace InFalsusChartLoader_falsum
         /// <summary>Whether the custom results' save container is ready.</summary>
         private static bool _resultsReady;
 
+        /// <summary>Whether the deferred hook tier has been asked for.</summary>
+        private static bool _deferredAsked;
+
 #if DEBUG
         /// <summary>Frames seen, for the probe's timer.</summary>
         private static int _frames;
@@ -71,6 +74,19 @@ namespace InFalsusChartLoader_falsum
         internal static void Update()
         {
             VideoBackground.Follow();
+
+            // The hooks the song select cannot reach are installed here, on the first frame after
+            // startup, and not at the first commit: the commit runs inside the song select's Awake,
+            // and an attach there measured six times what it costs anywhere else (1,900 ms against
+            // 320 ms for the very same call). The song select's Awake is the busiest moment in the
+            // game - it is loading the screen - so the tier is installed before the player gets
+            // anywhere near it.
+            if (!_deferredAsked)
+            {
+                _deferredAsked = true;
+                Diagnostics.Info("deferred hooks: installing on the first frame");
+                Hooks.InstallDeferred();
+            }
 
             // The background import is advanced before anything else can return: this is what takes a
             // finished snapshot, flushes the log lines the worker held back, and checks a few more songs
